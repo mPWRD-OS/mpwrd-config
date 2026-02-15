@@ -1,3 +1,9 @@
+mpwrd-config (1:0.0.1-1) unstable; urgency=medium
+
+  * Add epoch to preserve upgrade path after version reset.
+
+ -- Ruledo <ruledo707@gmail.com>  Sun, 15 Feb 2026 11:20:22 +0000
+
 mpwrd-config (0.0-1) unstable; urgency=medium
 
   * Initial public release.
