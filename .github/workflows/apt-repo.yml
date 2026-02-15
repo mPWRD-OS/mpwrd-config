@@ -1,0 +1,98 @@
+name: Publish APT Repo
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v0.0.1). If empty, uses latest release."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install repo tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils gnupg
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if [ -z "$TAG" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --json tagName -q '.tagName')
+          fi
+          if [ -z "$TAG" ]; then
+            echo "No release tag found." >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Using tag: $TAG"
+
+      - name: Download deb assets
+        run: |
+          mkdir -p /tmp/debs
+          gh release download "${{ steps.tag.outputs.tag }}" --pattern "*.deb" --dir /tmp/debs
+          ls -la /tmp/debs
+
+      - name: Prepare gh-pages branch
+        run: |
+          git fetch origin gh-pages || true
+          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+            git checkout gh-pages
+            git reset --hard origin/gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf .
+          fi
+
+      - name: Update apt repo
+        env:
+          APT_REPO_GPG_PRIVATE_KEY: ${{ secrets.APT_REPO_GPG_PRIVATE_KEY }}
+          APT_REPO_GPG_PASSPHRASE: ${{ secrets.APT_REPO_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir -p apt
+          rm -f apt/Packages apt/Packages.gz apt/Release apt/Release.gpg apt/InRelease
+          cp /tmp/debs/*.deb apt/
+          (cd apt && dpkg-scanpackages . /dev/null > Packages)
+          gzip -9c apt/Packages > apt/Packages.gz
+          apt-ftparchive release apt > apt/Release
+          if [ -z "${APT_REPO_GPG_PRIVATE_KEY:-}" ]; then
+            echo "Missing APT_REPO_GPG_PRIVATE_KEY secret." >&2
+            exit 1
+          fi
+          echo "$APT_REPO_GPG_PRIVATE_KEY" | gpg --batch --import
+          KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5; exit}')
+          gpg --batch --pinentry-mode loopback --passphrase "${APT_REPO_GPG_PASSPHRASE:-}" --clearsign -o apt/InRelease apt/Release
+          gpg --batch --pinentry-mode loopback --passphrase "${APT_REPO_GPG_PASSPHRASE:-}" -abs -o apt/Release.gpg apt/Release
+          gpg --armor --export "$KEY_ID" > apt/mpwrd-config-archive-keyring.asc
+
+      - name: Commit and push
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apt
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "Update APT repo for ${{ steps.tag.outputs.tag }}"
+          git push origin gh-pages
