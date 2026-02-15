@@ -70,6 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p apt
+          rm -f apt/*.deb
           rm -f apt/Packages apt/Packages.gz apt/Release apt/Release.gpg apt/InRelease
           cp /tmp/debs/*.deb apt/
           (cd apt && dpkg-scanpackages . /dev/null > Packages)
