@@ -1,0 +1,26 @@
+#!/bin/sh
+set -e
+
+PIPX_HOME=/opt/mpwrd-config/pipx
+PIPX_BIN_DIR=/usr/local/bin
+export PIPX_HOME PIPX_BIN_DIR
+
+if [ "$1" = "configure" ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+
+    if command -v pipx >/dev/null 2>&1; then
+        mkdir -p "$PIPX_HOME"
+        WHEEL_PATH="$(ls /usr/share/mpwrd-config/wheels/mpwrd_config-*.whl 2>/dev/null | head -n 1 || true)"
+        METADATA_FILE="$PIPX_HOME/venvs/mpwrd-config/pipx_metadata.json"
+        if [ -n "$WHEEL_PATH" ]; then
+            pipx install --force --system-site-packages "$WHEEL_PATH" >/dev/null 2>&1 || true
+            if [ ! -f "$METADATA_FILE" ]; then
+                pipx install --force --system-site-packages "$WHEEL_PATH" >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
+
+    systemctl try-restart mpwrd-config-web.service >/dev/null 2>&1 || true
+fi
+
+exit 0

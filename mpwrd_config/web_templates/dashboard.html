@@ -1,0 +1,2019 @@
+{% extends "base.html" %}
+{% block content %}
+{% if notice and not notice_section %}
+<pre class="notice {{ notice_kind or "info" }}">{{ notice }}</pre>
+{% endif %}
+
+<div class="sidebar-backdrop" data-role="sidebar-backdrop" aria-hidden="true"></div>
+<div class="dashboard-layout">
+  <aside class="sidebar" id="section-menu" aria-label="Dashboard menu">
+    <div class="sidebar-title">Menu</div>
+    <button class="nav-item{% if active_section == 'home' %} active{% endif %}" type="button" data-section="home" aria-selected="{% if active_section == 'home' %}true{% else %}false{% endif %}">Dashboard</button>
+    <button class="nav-item{% if active_section == 'meshtastic' %} active{% endif %}" type="button" data-section="meshtastic" aria-selected="{% if active_section == 'meshtastic' %}true{% else %}false{% endif %}">Meshtastic</button>
+    <div class="subnav-list{% if active_section == 'meshtastic' %} active{% endif %}" data-section="meshtastic" aria-hidden="{% if active_section == 'meshtastic' %}false{% else %}true{% endif %}">
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'overview' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="overview">Meshtastic Overview</button>
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'radio' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="radio">URL</button>
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'lora' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="lora">LoRa Configuration</button>
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'preferences' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="preferences">Preferences &amp; Channels</button>
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'keys' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="keys">Keys &amp; Admin</button>
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'repo' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="repo">Meshtastic Repo</button>
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'service' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="service">meshtasticd Service</button>
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'i2c' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="i2c">I2C</button>
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'diagnostics' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="diagnostics">Diagnostics</button>
+      <button class="subnav-item{% if active_section == 'meshtastic' and active_sub == 'advanced' %} active{% endif %}" type="button" data-section="meshtastic" data-sub="advanced">Advanced</button>
+    </div>
+    <button class="nav-item{% if active_section == 'networking' %} active{% endif %}" type="button" data-section="networking" aria-selected="{% if active_section == 'networking' %}true{% else %}false{% endif %}">Networking</button>
+    <div class="subnav-list{% if active_section == 'networking' %} active{% endif %}" data-section="networking" aria-hidden="{% if active_section == 'networking' %}false{% else %}true{% endif %}">
+      <button class="subnav-item{% if active_section == 'networking' and active_sub == 'identity' %} active{% endif %}" type="button" data-section="networking" data-sub="identity">Identity &amp; Interfaces</button>
+      <button class="subnav-item{% if active_section == 'networking' and active_sub == 'wifi' %} active{% endif %}" type="button" data-section="networking" data-sub="wifi">Wi-Fi Settings</button>
+      <button class="subnav-item{% if active_section == 'networking' and active_sub == 'wifi-mesh' %} active{% endif %}" type="button" data-section="networking" data-sub="wifi-mesh">Wi-Fi Mesh Sync</button>
+      <button class="subnav-item{% if active_section == 'networking' and active_sub == 'services' %} active{% endif %}" type="button" data-section="networking" data-sub="services">Networking Services</button>
+      <button class="subnav-item{% if active_section == 'networking' and active_sub == 'diagnostics' %} active{% endif %}" type="button" data-section="networking" data-sub="diagnostics">Diagnostics</button>
+    </div>
+    <button class="nav-item{% if active_section == 'time' %} active{% endif %}" type="button" data-section="time" aria-selected="{% if active_section == 'time' %}true{% else %}false{% endif %}">Time &amp; Timezone</button>
+    <button class="nav-item{% if active_section == 'software' %} active{% endif %}" type="button" data-section="software" aria-selected="{% if active_section == 'software' %}true{% else %}false{% endif %}">Software Manager</button>
+    <button class="nav-item{% if active_section == 'utilities' %} active{% endif %}" type="button" data-section="utilities" aria-selected="{% if active_section == 'utilities' %}true{% else %}false{% endif %}">System Utilities</button>
+    <div class="subnav-list{% if active_section == 'utilities' %} active{% endif %}" data-section="utilities" aria-hidden="{% if active_section == 'utilities' %}false{% else %}true{% endif %}">
+      <button class="subnav-item{% if active_section == 'utilities' and active_sub == 'snapshot' %} active{% endif %}" type="button" data-section="utilities" data-sub="snapshot">System Snapshot</button>
+      <button class="subnav-item{% if active_section == 'utilities' and active_sub == 'webui' %} active{% endif %}" type="button" data-section="utilities" data-sub="webui">Web UI Service</button>
+      <button class="subnav-item{% if active_section == 'utilities' and active_sub == 'toggles' %} active{% endif %}" type="button" data-section="utilities" data-sub="toggles">System Toggles</button>
+      <button class="subnav-item{% if active_section == 'utilities' and active_sub == 'ssh-keys' %} active{% endif %}" type="button" data-section="utilities" data-sub="ssh-keys">SSH Keys</button>
+      <button class="subnav-item{% if active_section == 'utilities' and active_sub == 'system-info' %} active{% endif %}" type="button" data-section="utilities" data-sub="system-info">System Info</button>
+      <button class="subnav-item{% if active_section == 'utilities' and active_sub == 'legacy' %} active{% endif %}" type="button" data-section="utilities" data-sub="legacy">Legacy Tools</button>
+    </div>
+    <button class="nav-item{% if active_section == 'system-actions' %} active{% endif %}" type="button" data-section="system-actions" aria-selected="{% if active_section == 'system-actions' %}true{% else %}false{% endif %}">System Actions</button>
+    <button class="nav-item{% if active_section == 'kernel' %} active{% endif %}" type="button" data-section="kernel" aria-selected="{% if active_section == 'kernel' %}true{% else %}false{% endif %}">Kernel Modules</button>
+    <button class="nav-item{% if active_section == 'wizard' %} active{% endif %}" type="button" data-section="wizard" aria-selected="{% if active_section == 'wizard' %}true{% else %}false{% endif %}">Install Wizard</button>
+    <button class="nav-item{% if active_section == 'help' %} active{% endif %}" type="button" data-section="help" aria-selected="{% if active_section == 'help' %}true{% else %}false{% endif %}">Help / About</button>
+    <div class="subnav-list{% if active_section == 'help' %} active{% endif %}" data-section="help" aria-hidden="{% if active_section == 'help' %}false{% else %}true{% endif %}">
+      <button class="subnav-item{% if active_section == 'help' and active_sub == 'about' %} active{% endif %}" type="button" data-section="help" data-sub="about">Help / About</button>
+      <button class="subnav-item{% if active_section == 'help' and active_sub == 'pinouts' %} active{% endif %}" type="button" data-section="help" data-sub="pinouts">Pinouts</button>
+    </div>
+  </aside>
+  <div class="section-content">
+
+<section class="grid section-panel{% if active_section != 'home' %} hidden{% endif %}" data-section="home" role="tabpanel">
+{% if notice and notice_section == "home" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="home" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Dashboard</h2>
+      <p>Quick system overview.</p>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="label">Hostname</div>
+        <div class="value" data-dashboard="hostname">{{ dashboard.hostname }}</div>
+      </div>
+      <div>
+        <div class="label">Uptime</div>
+        <div class="value" data-dashboard="uptime">{{ dashboard.uptime }}</div>
+      </div>
+      <div>
+        <div class="label">CPU Load</div>
+        <div class="value" data-dashboard="load">{{ dashboard.load }}</div>
+      </div>
+      <div>
+        <div class="label">Memory</div>
+        <div class="value" data-dashboard="memory">{{ dashboard.memory }}</div>
+      </div>
+      <div>
+        <div class="label">Disk</div>
+        <div class="value" data-dashboard="disk">{{ dashboard.disk }}</div>
+      </div>
+      <div>
+        <div class="label">IP Addresses</div>
+        <div class="value" data-dashboard="ip">{{ dashboard.ip }}</div>
+      </div>
+      <div>
+        <div class="label">Default Interface</div>
+        <div class="value" data-dashboard="default_interface">{{ dashboard.default_interface }}</div>
+      </div>
+      <div>
+        <div class="label">LoRa Radio</div>
+        <div class="value" data-dashboard="radio">{{ dashboard.radio }}</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<section class="grid section-panel{% if active_section != 'networking' %} hidden{% endif %}" data-section="networking" role="tabpanel">
+{% if notice and notice_section == "networking" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="networking" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+
+  <div class="subpanel{% if active_section == 'networking' and active_sub != 'identity' %} hidden{% endif %}" data-sub="identity">
+  <div class="card">
+    <div class="card-header">
+      <h2>Identity &amp; Interfaces</h2>
+      <p>Hostname and interface selection.</p>
+    </div>
+    <form class="form-grid" method="post" action="/actions/hostname" onsubmit="return confirm('Change the system hostname?');">
+      <input type="hidden" name="confirm" value="hostname" />
+      <label>
+        <span>Hostname</span>
+        <input type="text" name="hostname" value="{{ config.networking.hostname or '' }}" required />
+      </label>
+      <button class="button primary" type="submit">Update Hostname</button>
+    </form>
+    {% if interfaces.wifi %}
+    <form class="form-grid" method="post" action="/actions/wifi-interface">
+      <label>
+        <span>Wi-Fi Interface</span>
+        <select name="interface">
+          <option value="" {% if not config.networking.wifi_interface %}selected{% endif %}>Auto (if only one)</option>
+          {% for iface in interfaces.wifi %}
+          <option value="{{ iface }}" {% if config.networking.wifi_interface == iface %}selected{% endif %}>{{ iface }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="button ghost" type="submit">Set Wi-Fi Interface</button>
+    </form>
+    {% endif %}
+    {% if interfaces.ethernet %}
+    <form class="form-grid" method="post" action="/actions/ethernet-interface">
+      <label>
+        <span>Ethernet Interface</span>
+        <select name="interface">
+          <option value="" {% if not config.networking.ethernet_interface %}selected{% endif %}>Auto (if only one)</option>
+          {% for iface in interfaces.ethernet %}
+          <option value="{{ iface }}" {% if config.networking.ethernet_interface == iface %}selected{% endif %}>{{ iface }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="button ghost" type="submit">Set Ethernet Interface</button>
+    </form>
+    {% endif %}
+  </div>
+  </div>
+
+  <div class="subpanel{% if active_section == 'networking' and active_sub != 'wifi' %} hidden{% endif %}" data-sub="wifi">
+  <div class="card">
+    <div class="card-header">
+      <h2>Wi-Fi Settings</h2>
+      <p>SSID, password, and radio state.</p>
+    </div>
+    <form class="form-grid" method="post" action="/actions/wifi">
+      <label>
+        <span>SSID</span>
+        <input type="text" name="ssid" required />
+      </label>
+      <label>
+        <span>Password</span>
+        <input type="password" name="psk" required />
+      </label>
+      <label>
+        <span>Country Code</span>
+        <input type="text" name="country" placeholder="US" />
+      </label>
+      <button class="button primary" type="submit">Save Wi-Fi</button>
+    </form>
+    <div class="button-stack">
+      <form method="post" action="/actions/wifi-state">
+        <input type="hidden" name="state" value="enable" />
+        <button class="button ghost" type="submit">Enable Wi-Fi</button>
+      </form>
+      <form method="post" action="/actions/wifi-state">
+        <input type="hidden" name="state" value="disable" />
+        <button class="button ghost" type="submit">Disable Wi-Fi</button>
+      </form>
+      <form method="post" action="/actions/wifi-restart">
+        <button class="button ghost" type="submit">Restart Wi-Fi</button>
+      </form>
+    </div>
+  </div>
+  </div>
+
+  <div class="subpanel{% if active_section == 'networking' and active_sub != 'wifi-mesh' %} hidden{% endif %}" data-sub="wifi-mesh">
+  <div class="card">
+    <div class="card-header">
+      <h2>Wi-Fi Mesh Sync</h2>
+      <p>Sync Meshtastic and Wi-Fi state, and manage the mesh sync service.</p>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="label">Mesh Sync Service</div>
+        <div class="value" data-service="mesh">{{ service_states.mesh }}</div>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Mesh Sync Service</h3>
+      <div class="button-stack">
+        <form method="post" action="/actions/wifi-mesh/sync">
+          <button class="button ghost" type="submit">Run Sync</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="{{ mesh_service }}" />
+          <input type="hidden" name="action" value="status" />
+          <button class="button ghost" type="submit">Status</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="{{ mesh_service }}" />
+          <input type="hidden" name="action" value="start" />
+          <button class="button ghost" type="submit">Start</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="{{ mesh_service }}" />
+          <input type="hidden" name="action" value="stop" />
+          <button class="button ghost" type="submit">Stop</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="{{ mesh_service }}" />
+          <input type="hidden" name="action" value="restart" />
+          <button class="button ghost" type="submit">Restart</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="{{ mesh_service }}" />
+          <input type="hidden" name="action" value="enable" />
+          <button class="button ghost" type="submit">Enable</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="{{ mesh_service }}" />
+          <input type="hidden" name="action" value="disable" />
+          <button class="button ghost" type="submit">Disable</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="subpanel{% if active_section == 'networking' and active_sub != 'diagnostics' %} hidden{% endif %}" data-sub="diagnostics">
+  <div class="card">
+    <div class="card-header">
+      <h2>Diagnostics</h2>
+      <p>Quick status checks.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/wifi-status">
+        <button class="button ghost" type="submit">Show Wi-Fi Status</button>
+      </form>
+      <form method="post" action="/actions/ethernet-status">
+        <button class="button ghost" type="submit">Show Ethernet Status</button>
+      </form>
+      <form method="post" action="/actions/ip-addresses">
+        <button class="button ghost" type="submit">Show IP Addresses</button>
+      </form>
+      <form method="post" action="/actions/network-test">
+        <button class="button ghost" type="submit">Test Internet</button>
+      </form>
+    </div>
+  </div>
+  </div>
+
+  <div class="subpanel{% if active_section == 'networking' and active_sub != 'services' %} hidden{% endif %}" data-sub="services">
+  <div class="card">
+    <div class="card-header">
+      <h2>Networking Services</h2>
+      <p>Core networking daemons.</p>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="label">Avahi-Daemon</div>
+        <div class="value" data-service="avahi">{{ service_states.avahi }}</div>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Avahi-Daemon</h3>
+      <div class="button-stack">
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="avahi-daemon" />
+          <input type="hidden" name="action" value="status" />
+          <button class="button ghost" type="submit">Status</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="avahi-daemon" />
+          <input type="hidden" name="action" value="start" />
+          <button class="button ghost" type="submit">Start</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="avahi-daemon" />
+          <input type="hidden" name="action" value="stop" />
+          <button class="button ghost" type="submit">Stop</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="avahi-daemon" />
+          <input type="hidden" name="action" value="restart" />
+          <button class="button ghost" type="submit">Restart</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="avahi-daemon" />
+          <input type="hidden" name="action" value="enable" />
+          <button class="button ghost" type="submit">Enable</button>
+        </form>
+        <form method="post" action="/actions/service">
+          <input type="hidden" name="name" value="avahi-daemon" />
+          <input type="hidden" name="action" value="disable" />
+          <button class="button ghost" type="submit">Disable</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</section>
+<section class="grid section-panel{% if active_section != 'meshtastic' %} hidden{% endif %}" data-section="meshtastic" role="tabpanel">
+{% if notice and notice_section == "meshtastic" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="meshtastic" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'overview' %} hidden{% endif %}" data-sub="overview">
+  <div class="card">
+    <div class="card-header">
+      <h2>Meshtastic Overview</h2>
+      <p>Snapshot of the local node and radio.</p>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="label">Service</div>
+        <div class="value" data-status="meshtastic_service">{{ status.meshtastic_service }}</div>
+      </div>
+      <div>
+        <div class="label">Radio</div>
+        <div class="value" data-status="radio">{{ status.radio }}</div>
+      </div>
+      <div>
+        <div class="label">Config URL</div>
+        <div class="value" data-status="meshtastic_config_url">{{ status.meshtastic_config_url }}</div>
+      </div>
+      <div>
+        <div class="label">I2C</div>
+        <div class="value" data-status="meshtastic_i2c">{{ status.meshtastic_i2c }}</div>
+      </div>
+      <div>
+        <div class="label">MAC Source</div>
+        <div class="value" data-status="meshtastic_mac_source">{{ status.meshtastic_mac_source }}</div>
+      </div>
+      <div>
+        <div class="label">Legacy Admin</div>
+        <div class="value" data-status="meshtastic_legacy_admin">{{ status.meshtastic_legacy_admin }}</div>
+      </div>
+    </div>
+    <details class="details">
+      <summary>Node Summary</summary>
+      <pre class="mono" data-status="meshtastic_summary">{{ status.meshtastic_summary }}</pre>
+    </details>
+    <details class="details">
+      <summary>LoRa Settings</summary>
+      <pre class="mono" data-status-lora>Loading...</pre>
+    </details>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'radio' %} hidden{% endif %}" data-sub="radio">
+  <div class="card">
+    <div class="card-header">
+      <h2>URL</h2>
+      <p>Configure the Meshtastic configuration URL.</p>
+    </div>
+    <form class="form-grid" method="post" action="/actions/meshtastic/config-url">
+      <label>
+        <span>Configuration URL</span>
+        <input type="text" name="url" placeholder="https://meshtastic.org/e/#..." required />
+      </label>
+      <button class="button primary" type="submit">Set Config URL</button>
+    </form>
+    <div class="button-stack">
+      <form method="post" action="/actions/meshtastic/config-qr">
+        <button class="button ghost" type="submit">Show Config URL + QR</button>
+      </form>
+    </div>
+    {% if meshtastic_qr_svg or meshtastic_qr_url %}
+    <div class="output-block">
+      <div class="label">Config URL + QR</div>
+      {% if meshtastic_qr_svg %}
+      <div class="qr-image">{{ meshtastic_qr_svg }}</div>
+      {% endif %}
+      {% if meshtastic_qr_url %}
+      <div class="mono url">{{ meshtastic_qr_url }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'repo' %} hidden{% endif %}" data-sub="repo">
+  <div class="card">
+    <div class="card-header">
+      <h2>Meshtastic Repo</h2>
+      <p>Switch between alpha, beta, and daily repositories.</p>
+    </div>
+    <div class="label">Current Repo</div>
+    <div class="value" data-status="meshtastic_repo">{{ status.meshtastic_repo }}</div>
+    <form class="form-grid" method="post" action="/actions/meshtastic/repo" onsubmit="return confirm('Install/upgrade meshtasticd from the selected repo?');">
+      <input type="hidden" name="action" value="set" />
+      <label>
+        <span>Repo Channel</span>
+        <select name="channel" required>
+          <option value="beta">Beta</option>
+          <option value="alpha">Alpha</option>
+          <option value="daily">Daily</option>
+        </select>
+      </label>
+      <button class="button primary" type="submit">Install/Update Repo</button>
+    </form>
+    <div class="button-stack">
+      <form method="post" action="/actions/meshtastic/repo">
+        <input type="hidden" name="action" value="status" />
+        <button class="button ghost" type="submit">Show Current Repo</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/repo" onsubmit="return confirm('Switch to beta repo and install/upgrade meshtasticd?');">
+        <input type="hidden" name="action" value="set" />
+        <input type="hidden" name="channel" value="beta" />
+        <button class="button ghost" type="submit">Use Beta Repo</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/repo" onsubmit="return confirm('Switch to alpha repo and install/upgrade meshtasticd?');">
+        <input type="hidden" name="action" value="set" />
+        <input type="hidden" name="channel" value="alpha" />
+        <button class="button ghost" type="submit">Use Alpha Repo</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/repo" onsubmit="return confirm('Switch to daily repo and install/upgrade meshtasticd?');">
+        <input type="hidden" name="action" value="set" />
+        <input type="hidden" name="channel" value="daily" />
+        <button class="button ghost" type="submit">Use Daily Repo</button>
+      </form>
+    </div>
+  </div>
+  <div class="card compact">
+    <div class="card-header">
+      <h2>Package Actions</h2>
+      <p class="muted">Upgrade or remove meshtasticd.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/meshtastic/upgrade" onsubmit="return confirm('Upgrade meshtasticd now?');">
+        <button class="button ghost" type="submit">Upgrade meshtasticd</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/uninstall" onsubmit="return confirm('Uninstall meshtasticd?');">
+        <button class="button ghost" type="submit">Uninstall meshtasticd</button>
+      </form>
+    </div>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'service' %} hidden{% endif %}" data-sub="service">
+  <div class="card">
+    <div class="card-header">
+      <h2>meshtasticd Service</h2>
+      <p>Systemd unit: <span class="mono-inline">meshtasticd</span></p>
+    </div>
+    <div class="section">
+      <h3>Service Control</h3>
+      <div class="button-stack">
+        <form method="post" action="/actions/meshtastic/service/status">
+          <button class="button ghost" type="submit">Status</button>
+        </form>
+        <form method="post" action="/actions/meshtastic/service/start">
+          <button class="button ghost" type="submit">Start</button>
+        </form>
+        <form method="post" action="/actions/meshtastic/service/stop">
+          <button class="button ghost" type="submit">Stop</button>
+        </form>
+        <form method="post" action="/actions/meshtastic/service/restart">
+          <button class="button primary" type="submit">Restart</button>
+        </form>
+        <form method="post" action="/actions/meshtastic/service/enable">
+          <button class="button ghost" type="submit">Enable</button>
+        </form>
+        <form method="post" action="/actions/meshtastic/service/disable">
+          <button class="button ghost" type="submit">Disable</button>
+        </form>
+        <form method="post" action="/actions/meshtastic/mesh-test">
+          <button class="button ghost" type="submit">Mesh Test</button>
+        </form>
+      </div>
+    </div>
+    <div class="section">
+      <h3>MAC Address Source</h3>
+      <form class="form-grid" method="post" action="/actions/meshtastic/mac-source">
+        <label>
+          <span>Source Interface</span>
+          <select name="source" data-status-select="meshtastic_mac_source" required>
+            {% for value, label in mac_source_options %}
+            <option value="{{ value }}" {% if status.meshtastic_mac_source == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button class="button ghost" type="submit">Set MAC Source</button>
+      </form>
+    </div>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'i2c' %} hidden{% endif %}" data-sub="i2c">
+  <div class="card">
+    <div class="card-header">
+      <h2>I2C</h2>
+      <p>Manage meshtasticd I2C state.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/meshtastic/i2c">
+        <input type="hidden" name="state" value="check" />
+        <button class="button ghost" type="submit">Check I2C</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/i2c">
+        <input type="hidden" name="state" value="enable" />
+        <button class="button ghost" type="submit">Enable I2C</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/i2c">
+        <input type="hidden" name="state" value="disable" />
+        <button class="button ghost" type="submit">Disable I2C</button>
+      </form>
+    </div>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'diagnostics' %} hidden{% endif %}" data-sub="diagnostics">
+  <div class="card">
+    <div class="card-header">
+      <h2>Diagnostics</h2>
+      <p>Quick visibility into node state.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/meshtastic/info">
+        <button class="button ghost" type="submit">Show Node Info</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/summary">
+        <button class="button ghost" type="submit">Show Node Summary</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/lora-show">
+        <button class="button ghost" type="submit">Show LoRa Settings</button>
+      </form>
+    </div>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'keys' %} hidden{% endif %}" data-sub="keys">
+  <div class="card">
+    <div class="card-header">
+      <h2>Keys &amp; Admin</h2>
+      <p>View and update security keys.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/meshtastic/public-key-show">
+        <button class="button ghost" type="submit">Show Public Key</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/private-key-show">
+        <button class="button ghost" type="submit">Show Private Key</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/admin-keys-show">
+        <button class="button ghost" type="submit">Show Admin Keys</button>
+      </form>
+    </div>
+    <form class="form-grid" method="post" action="/actions/meshtastic/public-key">
+      <label>
+        <span>Public Key (base64)</span>
+        <input type="text" name="key" autocomplete="off" required />
+      </label>
+      <button class="button ghost" type="submit">Set Public Key</button>
+    </form>
+    <form class="form-grid" method="post" action="/actions/meshtastic/private-key">
+      <label>
+        <span>Private Key (base64)</span>
+        <input type="password" name="key" autocomplete="off" required />
+      </label>
+      <button class="button ghost" type="submit">Set Private Key</button>
+    </form>
+    <form class="form-grid" method="post" action="/actions/meshtastic/admin-key">
+      <label>
+        <span>Add Admin Key (base64)</span>
+        <input type="password" name="key" autocomplete="off" required />
+      </label>
+      <button class="button ghost" type="submit">Add Admin Key</button>
+    </form>
+    <form method="post" action="/actions/meshtastic/admin-clear" onsubmit="return confirm('Clear all admin keys?');">
+      <button class="button ghost" type="submit">Clear Admin Keys</button>
+    </form>
+  </div>
+  <div class="card compact">
+    <div class="card-header">
+      <h2>Legacy Admin Channel</h2>
+      <p class="muted">Toggles the legacy admin channel (security.admin_channel_enabled).</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/meshtastic/legacy-admin-status">
+        <button class="button ghost" type="submit">Legacy Admin Status</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/legacy-admin">
+        <input type="hidden" name="enabled" value="true" />
+        <button class="button ghost" type="submit">Legacy Admin On</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/legacy-admin">
+        <input type="hidden" name="enabled" value="false" />
+        <button class="button ghost" type="submit">Legacy Admin Off</button>
+      </form>
+    </div>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'preferences' %} hidden{% endif %}" data-sub="preferences">
+  <div class="card">
+    <div class="card-header">
+      <h2>Preferences &amp; Channels</h2>
+      <p>Full Meshtastic settings without Control.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/meshtastic/config">
+        <input type="hidden" name="category" value="settings" />
+        <button class="button ghost" type="submit">Show Preferences</button>
+      </form>
+      <form method="post" action="/actions/meshtastic/pref-fields">
+        <button class="button ghost" type="submit">List Preference Fields</button>
+      </form>
+    </div>
+    <form class="form-grid" method="post" action="/actions/meshtastic/pref-get">
+      <label>
+        <span>Preference Field</span>
+        <input type="text" name="field" placeholder="power.ls_secs" required />
+      </label>
+      <button class="button ghost" type="submit">Get Preference</button>
+    </form>
+    <form class="form-grid" method="post" action="/actions/meshtastic/pref-set">
+      <label>
+        <span>Preference Field</span>
+        <input type="text" name="field" placeholder="power.ls_secs" required />
+      </label>
+      <label>
+        <span>Value</span>
+        <input type="text" name="value" required />
+      </label>
+      <button class="button ghost" type="submit">Set Preference</button>
+    </form>
+    <div class="button-stack">
+      <form method="post" action="/actions/meshtastic/config">
+        <input type="hidden" name="category" value="channels" />
+        <button class="button ghost" type="submit">Show Channels</button>
+      </form>
+    </div>
+    <form class="form-grid" method="post" action="/actions/meshtastic/channel-set">
+      <label>
+        <span>Channel Index</span>
+        <input type="number" name="index" min="0" value="0" required />
+      </label>
+      <label>
+        <span>Field</span>
+        <input type="text" name="field" placeholder="name" required />
+      </label>
+      <label>
+        <span>Value</span>
+        <input type="text" name="value" required />
+      </label>
+      <button class="button ghost" type="submit">Set Channel Field</button>
+    </form>
+    <form class="form-grid" method="post" action="/actions/meshtastic/channel-add">
+      <label>
+        <span>New Channel Name</span>
+        <input type="text" name="name" required />
+      </label>
+      <button class="button ghost" type="submit">Add Channel</button>
+    </form>
+    <form class="form-grid" method="post" action="/actions/meshtastic/channel-del" onsubmit="return confirm('Delete this channel?');">
+      <label>
+        <span>Channel Index</span>
+        <input type="number" name="index" min="0" value="0" required />
+      </label>
+      <button class="button ghost" type="submit">Delete Channel</button>
+    </form>
+    <form class="form-grid" method="post" action="/actions/meshtastic/channel-enable">
+      <label>
+        <span>Channel Index</span>
+        <input type="number" name="index" min="0" value="0" required />
+      </label>
+      <button class="button ghost" type="submit">Enable Channel</button>
+    </form>
+    <form class="form-grid" method="post" action="/actions/meshtastic/channel-disable">
+      <label>
+        <span>Channel Index</span>
+        <input type="number" name="index" min="0" value="0" required />
+      </label>
+      <button class="button ghost" type="submit">Disable Channel</button>
+    </form>
+    <form class="form-grid" method="post" action="/actions/meshtastic/channel-set-url" onsubmit="return confirm('This will overwrite LoRa settings and channels. Continue?');">
+      <label>
+        <span>Config URL (overwrite)</span>
+        <input type="text" name="url" placeholder="https://meshtastic.org/e/#..." required />
+      </label>
+      <button class="button ghost" type="submit">Set Channels from URL</button>
+    </form>
+    <form class="form-grid" method="post" action="/actions/meshtastic/channel-add-url">
+      <label>
+        <span>Config URL (add)</span>
+        <input type="text" name="url" placeholder="https://meshtastic.org/e/#..." required />
+      </label>
+      <button class="button ghost" type="submit">Add Channels from URL</button>
+    </form>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'advanced' %} hidden{% endif %}" data-sub="advanced">
+  <div class="card">
+    <div class="card-header">
+      <h2>Advanced</h2>
+      <p>Custom Meshtastic commands.</p>
+    </div>
+    <form class="form-grid" method="post" action="/actions/meshtastic/update">
+      <label>
+        <span>Custom Meshtastic Command</span>
+        <input type="text" name="command" placeholder="--set lora.region US" required />
+      </label>
+      <button class="button ghost" type="submit">Run Command</button>
+    </form>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'meshtastic' and active_sub != 'lora' %} hidden{% endif %}" data-sub="lora">
+  <div class="card compact">
+    <div class="card-header">
+      <h2>LoRa Radio Model</h2>
+      <p>Choose the active radio type.</p>
+    </div>
+    <form class="form-grid" method="post" action="/actions/meshtastic/radio">
+      <label>
+        <span>Radio Model</span>
+        <select name="model" data-status-select="radio" required>
+          {% for value, label in radio_options %}
+          <option value="{{ value }}" {% if status.radio == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="button ghost" type="submit">Set Radio</button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h2>LoRa Configuration</h2>
+      <p>Adjust radio parameters.</p>
+    </div>
+    {% set lora = status.lora_settings %}
+    <form class="form-grid" method="post" action="/actions/meshtastic/lora" data-lora-form>
+        <label>
+          <span>Region</span>
+          <select name="region">
+            <option value="">Leave unchanged</option>
+            {% for region in ["UNSET", "US", "EU_433", "EU_868", "CN", "JP", "ANZ", "KR", "TW", "RU", "IN", "NZ_865", "TH", "LORA_24", "UA_433", "UA_868", "MY_433", "MY_919", "SG_923"] %}
+            <option value="{{ region }}" {% if lora.lora_region == region %}selected{% endif %}>{{ region }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Use Preset</span>
+          <select name="use_preset">
+            <option value="">Leave unchanged</option>
+            <option value="true" {% if lora.lora_usePreset == "true" %}selected{% endif %}>true</option>
+            <option value="false" {% if lora.lora_usePreset == "false" %}selected{% endif %}>false</option>
+          </select>
+        </label>
+        <label>
+          <span>Preset</span>
+          <select name="preset">
+            <option value="">Leave unchanged</option>
+            {% for preset in ["LONG_FAST", "LONG_SLOW", "VERY_LONG_SLOW", "MEDIUM_SLOW", "MEDIUM_FAST", "SHORT_SLOW", "SHORT_FAST", "SHORT_TURBO"] %}
+            <option value="{{ preset }}" {% if lora.lora_modemPreset == preset %}selected{% endif %}>{{ preset }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Bandwidth</span>
+          <select name="bandwidth">
+            <option value="">Leave unchanged</option>
+            {% for bw in ["0", "31", "62", "125", "250", "500"] %}
+            <option value="{{ bw }}" {% if lora.lora_bandwidth == bw %}selected{% endif %}>{{ bw }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Spread Factor</span>
+          <select name="spread_factor">
+            <option value="">Leave unchanged</option>
+            {% for spread in ["0", "7", "8", "9", "10", "11", "12"] %}
+            <option value="{{ spread }}" {% if lora.lora_spreadFactor == spread %}selected{% endif %}>{{ spread }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Coding Rate</span>
+          <select name="coding_rate">
+            <option value="">Leave unchanged</option>
+            {% for rate in ["0", "5", "6", "7", "8"] %}
+            <option value="{{ rate }}" {% if lora.lora_codingRate == rate %}selected{% endif %}>{{ rate }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Frequency Offset</span>
+          <input type="text" name="frequency_offset" value="{{ lora.lora_frequencyOffset }}" placeholder="0-1000000" />
+        </label>
+        <label>
+          <span>Hop Limit</span>
+          <input type="text" name="hop_limit" value="{{ lora.lora_hopLimit }}" placeholder="0-7" />
+        </label>
+        <label>
+          <span>TX Enabled</span>
+          <select name="tx_enabled">
+            <option value="">Leave unchanged</option>
+            <option value="true" {% if lora.lora_txEnabled == "true" %}selected{% endif %}>true</option>
+            <option value="false" {% if lora.lora_txEnabled == "false" %}selected{% endif %}>false</option>
+          </select>
+        </label>
+        <label>
+          <span>TX Power</span>
+          <input type="text" name="tx_power" value="{{ lora.lora_txPower }}" placeholder="0-30" />
+        </label>
+        <label>
+          <span>Frequency Slot</span>
+          <input type="text" name="channel_num" value="{{ lora.lora_channelNum }}" placeholder="0+" />
+        </label>
+        <label>
+          <span>Override Duty Cycle</span>
+          <select name="override_duty_cycle">
+            <option value="">Leave unchanged</option>
+            <option value="true" {% if lora.lora_overrideDutyCycle == "true" %}selected{% endif %}>true</option>
+            <option value="false" {% if lora.lora_overrideDutyCycle == "false" %}selected{% endif %}>false</option>
+          </select>
+        </label>
+        <label>
+          <span>SX126X RX Boosted Gain</span>
+          <select name="sx126x_rx_boosted_gain">
+            <option value="">Leave unchanged</option>
+            <option value="true" {% if lora.lora_sx126xRxBoostedGain == "true" %}selected{% endif %}>true</option>
+            <option value="false" {% if lora.lora_sx126xRxBoostedGain == "false" %}selected{% endif %}>false</option>
+          </select>
+        </label>
+        <label>
+          <span>Override Frequency (MHz)</span>
+          <input type="text" name="override_frequency" value="{{ lora.lora_overrideFrequency }}" placeholder="0+" />
+        </label>
+        <label>
+          <span>Ignore MQTT</span>
+          <select name="ignore_mqtt">
+            <option value="">Leave unchanged</option>
+            <option value="true" {% if lora.lora_ignoreMqtt == "true" %}selected{% endif %}>true</option>
+            <option value="false" {% if lora.lora_ignoreMqtt == "false" %}selected{% endif %}>false</option>
+          </select>
+        </label>
+        <label>
+          <span>OK to MQTT</span>
+          <select name="ok_to_mqtt">
+            <option value="">Leave unchanged</option>
+            <option value="true" {% if lora.lora_configOkToMqtt == "true" %}selected{% endif %}>true</option>
+            <option value="false" {% if lora.lora_configOkToMqtt == "false" %}selected{% endif %}>false</option>
+          </select>
+        </label>
+        <button class="button primary" type="submit">Save LoRa Settings</button>
+      </form>
+  </div>
+  </div>
+</section>
+<section class="grid section-panel{% if active_section != 'kernel' %} hidden{% endif %}" data-section="kernel" role="tabpanel">
+{% if notice and notice_section == "kernel" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="kernel" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+  <div class="card">
+    <div class="card-header">
+      <h2>Kernel Modules</h2>
+      <p>Current kernel module state.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/kernel-modules">
+        <input type="hidden" name="action" value="boot" />
+        <button class="button ghost" type="submit">List Boot Modules</button>
+      </form>
+      <form method="post" action="/actions/kernel-modules">
+        <input type="hidden" name="action" value="active" />
+        <button class="button ghost" type="submit">List Active Modules</button>
+      </form>
+      <form method="post" action="/actions/kernel-modules">
+        <input type="hidden" name="action" value="blacklist" />
+        <button class="button ghost" type="submit">List Blacklisted Modules</button>
+      </form>
+    </div>
+    <details class="details">
+      <summary>Boot Modules</summary>
+      <pre class="mono" data-kernel="boot">Loading…</pre>
+    </details>
+    <details class="details">
+      <summary>Active Modules</summary>
+      <pre class="mono" data-kernel="active">Loading…</pre>
+    </details>
+    <details class="details">
+      <summary>Blacklisted Modules</summary>
+      <pre class="mono" data-kernel="blacklist">Loading…</pre>
+    </details>
+    <p class="hint">Legend: L = loaded, B = boot, X = blacklisted.</p>
+    <div class="module-list" data-kernel="modules">
+      <div class="hint">Loading kernel modules…</div>
+    </div>
+  </div>
+</section>
+<section class="grid section-panel{% if active_section != 'time' %} hidden{% endif %}" data-section="time" role="tabpanel">
+{% if notice and notice_section == "time" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="time" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+  <div class="card">
+    <div class="card-header">
+      <h2>Time &amp; Timezone</h2>
+      <p>Manage the system clock.</p>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="label">Current Timezone</div>
+        <div class="value" data-time="timezone">{{ time_info.timezone }}</div>
+      </div>
+    </div>
+    <details class="details">
+      <summary>Current Status</summary>
+      <pre class="mono" data-time="status">{{ time_info.status }}</pre>
+    </details>
+    <form class="form-grid" method="post" action="/actions/timezone">
+      <label>
+        <span>Timezone</span>
+        <input type="text" name="timezone" placeholder="America/Los_Angeles" />
+      </label>
+      <button class="button ghost" type="submit">Set Timezone</button>
+    </form>
+    <form class="form-grid inline" method="post" action="/actions/time">
+      <label>
+        <span>Date</span>
+        <input type="date" name="date_value" required />
+      </label>
+      <label>
+        <span>Time</span>
+        <input type="time" name="time_value" step="1" required />
+      </label>
+      <button class="button ghost" type="submit">Set Time</button>
+    </form>
+  </div>
+  <div class="card compact">
+    <div class="card-header">
+      <h2>Watchclock</h2>
+      <p class="muted">Time-change monitor service.</p>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="label">Service</div>
+        <div class="value" data-service="watchclock">{{ service_states.watchclock }}</div>
+      </div>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/service">
+        <input type="hidden" name="name" value="femto-watchclock" />
+        <input type="hidden" name="action" value="status" />
+        <button class="button ghost" type="submit">Status</button>
+      </form>
+      <form method="post" action="/actions/service">
+        <input type="hidden" name="name" value="femto-watchclock" />
+        <input type="hidden" name="action" value="start" />
+        <button class="button ghost" type="submit">Start</button>
+      </form>
+      <form method="post" action="/actions/service">
+        <input type="hidden" name="name" value="femto-watchclock" />
+        <input type="hidden" name="action" value="stop" />
+        <button class="button ghost" type="submit">Stop</button>
+      </form>
+      <form method="post" action="/actions/service">
+        <input type="hidden" name="name" value="femto-watchclock" />
+        <input type="hidden" name="action" value="restart" />
+        <button class="button ghost" type="submit">Restart</button>
+      </form>
+      <form method="post" action="/actions/service">
+        <input type="hidden" name="name" value="femto-watchclock" />
+        <input type="hidden" name="action" value="enable" />
+        <button class="button ghost" type="submit">Enable</button>
+      </form>
+      <form method="post" action="/actions/service">
+        <input type="hidden" name="name" value="femto-watchclock" />
+        <input type="hidden" name="action" value="disable" />
+        <button class="button ghost" type="submit">Disable</button>
+      </form>
+    </div>
+  </div>
+</section>
+<section class="grid section-panel{% if active_section != 'software' %} hidden{% endif %}" data-section="software" role="tabpanel">
+{% if notice and notice_section == "software" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="software" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+  <div class="card">
+    <div class="card-header">
+      <h2>Software Manager</h2>
+      <p>Install, update, and control packages.</p>
+    </div>
+    <div class="software-packages" data-software-packages>
+      {% if packages is not none %}
+        {% include "partials/software_packages.html" %}
+      {% else %}
+        <div class="hint">Loading packages…</div>
+      {% endif %}
+    </div>
+  </div>
+  </div>
+</section>
+<section class="grid section-panel{% if active_section != 'utilities' %} hidden{% endif %}" data-section="utilities" role="tabpanel">
+{% if notice and notice_section == "utilities" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="utilities" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+  <div class="subpanel{% if active_section == 'utilities' and active_sub != 'snapshot' %} hidden{% endif %}" data-sub="snapshot">
+  <div class="card">
+    <div class="card-header">
+      <h2>System Snapshot</h2>
+      <p>Live readout from the device.</p>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="label">Hostname</div>
+        <div class="value" data-status="hostname">{{ status.hostname }}</div>
+      </div>
+      <div>
+        <div class="label">IP Addresses</div>
+        <div class="value" data-status="ip_addresses">{{ status.ip_addresses }}</div>
+      </div>
+      <div>
+        <div class="label">Wi-Fi</div>
+        <div class="value" data-status="wifi_status">{{ status.wifi_status }}</div>
+      </div>
+      <div>
+        <div class="label">Ethernet</div>
+        <div class="value" data-status="ethernet_status">{{ status.ethernet_status }}</div>
+      </div>
+      <div>
+        <div class="label">Meshtastic Service</div>
+        <div class="value" data-status="meshtastic_service">{{ status.meshtastic_service }}</div>
+      </div>
+      <div>
+        <div class="label">Radio Config</div>
+        <div class="value" data-status="radio">{{ status.radio }}</div>
+      </div>
+    </div>
+    <details class="details">
+      <summary>Meshtastic Info</summary>
+      <pre class="mono" data-status="meshtastic_info">{{ status.meshtastic_info }}</pre>
+    </details>
+    
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'utilities' and active_sub != 'webui' %} hidden{% endif %}" data-sub="webui">
+  <div class="card">
+    <div class="card-header">
+      <h2>Web UI Service</h2>
+      <p>Manage the mpwrd-config web service and socket.</p>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="label">Socket</div>
+        <div class="value" data-webui="socket_status">{{ web_ui.socket_status }}</div>
+      </div>
+      <div>
+        <div class="label">Service</div>
+        <div class="value" data-webui="service_status">{{ web_ui.service_status }}</div>
+      </div>
+    </div>
+    <pre class="mono{% if not web_ui.note %} hidden{% endif %}" data-webui="note">{{ web_ui.note }}</pre>
+    <div class="button-stack">
+      <form method="post" action="/actions/web-ui">
+        <input type="hidden" name="action" value="install" />
+        <button class="button ghost" type="submit">Install Service Files</button>
+      </form>
+      <form method="post" action="/actions/web-ui">
+        <input type="hidden" name="action" value="status" />
+        <button class="button ghost" type="submit">Status</button>
+      </form>
+      <form method="post" action="/actions/web-ui">
+        <input type="hidden" name="action" value="start" />
+        <button class="button ghost" type="submit">Start</button>
+      </form>
+      <form method="post" action="/actions/web-ui">
+        <input type="hidden" name="action" value="stop" />
+        <button class="button ghost" type="submit">Stop</button>
+      </form>
+      <form method="post" action="/actions/web-ui">
+        <input type="hidden" name="action" value="restart" />
+        <button class="button ghost" type="submit">Restart</button>
+      </form>
+      <form method="post" action="/actions/web-ui">
+        <input type="hidden" name="action" value="enable" />
+        <button class="button ghost" type="submit">Enable</button>
+      </form>
+      <form method="post" action="/actions/web-ui">
+        <input type="hidden" name="action" value="disable" />
+        <button class="button ghost" type="submit">Disable</button>
+      </form>
+    </div>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'utilities' and active_sub != 'toggles' %} hidden{% endif %}" data-sub="toggles">
+  <div class="card">
+    <div class="card-header">
+      <h2>System Toggles</h2>
+      <p>Common service switches.</p>
+    </div>
+    <div class="section">
+      <h3>ACT LED</h3>
+      <div class="button-stack">
+        <form method="post" action="/actions/act-led">
+          <input type="hidden" name="state" value="check" />
+          <button class="button ghost" type="submit">Check ACT LED</button>
+        </form>
+        <form method="post" action="/actions/act-led">
+          <input type="hidden" name="state" value="enable" />
+          <button class="button ghost" type="submit">Enable ACT LED</button>
+        </form>
+        <form method="post" action="/actions/act-led">
+          <input type="hidden" name="state" value="disable" />
+          <button class="button ghost" type="submit">Disable ACT LED</button>
+        </form>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Logging</h3>
+      <div class="button-stack">
+        <form method="post" action="/actions/logging">
+          <input type="hidden" name="state" value="check" />
+          <button class="button ghost" type="submit">Check Logging</button>
+        </form>
+        <form method="post" action="/actions/logging">
+          <input type="hidden" name="state" value="enable" />
+          <button class="button ghost" type="submit">Enable Logging</button>
+        </form>
+        <form method="post" action="/actions/logging">
+          <input type="hidden" name="state" value="disable" />
+          <button class="button ghost" type="submit">Disable Logging</button>
+        </form>
+      </div>
+    </div>
+    <div class="section">
+      <h3>ttyd</h3>
+      <div class="button-stack">
+        <form method="post" action="/actions/ttyd">
+          <input type="hidden" name="state" value="check" />
+          <button class="button ghost" type="submit">Status</button>
+        </form>
+        <form method="post" action="/actions/ttyd">
+          <input type="hidden" name="state" value="enable" />
+          <button class="button ghost" type="submit">Enable</button>
+        </form>
+        <form method="post" action="/actions/ttyd">
+          <input type="hidden" name="state" value="disable" />
+          <button class="button ghost" type="submit">Disable</button>
+        </form>
+        <form method="post" action="/actions/ttyd">
+          <input type="hidden" name="state" value="start" />
+          <button class="button ghost" type="submit">Start</button>
+        </form>
+        <form method="post" action="/actions/ttyd">
+          <input type="hidden" name="state" value="stop" />
+          <button class="button ghost" type="submit">Stop</button>
+        </form>
+        <form method="post" action="/actions/ttyd">
+          <input type="hidden" name="state" value="restart" />
+          <button class="button ghost" type="submit">Restart</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'utilities' and active_sub != 'ssh-keys' %} hidden{% endif %}" data-sub="ssh-keys">
+  <div class="card">
+    <div class="card-header">
+      <h2>SSH Keys</h2>
+      <p>Regenerate SSH host keys.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/ssh-keys" onsubmit="return confirm('Regenerate SSH host keys?');">
+        <button class="button ghost" type="submit">Regenerate SSH Keys</button>
+      </form>
+    </div>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'utilities' and active_sub != 'system-info' %} hidden{% endif %}" data-sub="system-info">
+  <div class="card">
+    <div class="card-header">
+      <h2>System Info</h2>
+      <p>Detailed system reports.</p>
+    </div>
+    <form class="form-grid inline" method="post" action="/actions/system-info">
+      <label>
+        <span>Section</span>
+        <select name="section">
+          <option value="all">All</option>
+          <option value="cpu">CPU</option>
+          <option value="os">OS</option>
+          <option value="storage">Storage</option>
+          <option value="network">Networking</option>
+          <option value="peripherals">Peripherals</option>
+        </select>
+      </label>
+      <button class="button ghost" type="submit">Show Info</button>
+    </form>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'utilities' and active_sub != 'legacy' %} hidden{% endif %}" data-sub="legacy">
+  <div class="card">
+    <div class="card-header">
+      <h2>Legacy Tools</h2>
+      <p>Legacy utilities from the original Femtofox tooling.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/legacy/usb-config">
+        <button class="button ghost" type="submit">Run USB Configuration Tool</button>
+      </form>
+      <form method="post" action="/actions/legacy/runonce">
+        <button class="button ghost" type="submit">Re-run First-Boot Script</button>
+      </form>
+      <form method="post" action="/actions/legacy/luckfox">
+        <button class="button ghost" type="submit">Run OEM luckfox-config</button>
+      </form>
+      <form method="post" action="/actions/legacy/process">
+        <button class="button ghost" type="submit">Process Snapshot</button>
+      </form>
+      <a class="button ghost" href="https://{{ request.url.hostname }}:7681" target="_blank" rel="noopener">Open Web Terminal (ttyd)</a>
+    </div>
+  </div>
+  </div>
+</section>
+<section class="grid section-panel{% if active_section != 'help' %} hidden{% endif %}" data-section="help" role="tabpanel">
+  <div class="subpanel{% if active_section == 'help' and active_sub != 'about' %} hidden{% endif %}" data-sub="about">
+  <div class="card">
+    <div class="card-header">
+      <h2>Help / About</h2>
+      <p>Reference and licensing information.</p>
+    </div>
+{% if notice and notice_section == "help" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="help" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+    <div class="button-stack">
+      <form method="post" action="/actions/help/license">
+        <input type="hidden" name="kind" value="about" />
+        <button class="button ghost" type="submit">About mpwrd-config</button>
+      </form>
+      <form method="post" action="/actions/help/license">
+        <input type="hidden" name="kind" value="short" />
+        <button class="button ghost" type="submit">Femtofox License (Short)</button>
+      </form>
+      <form method="post" action="/actions/help/license">
+        <input type="hidden" name="kind" value="long" />
+        <button class="button ghost" type="submit">Femtofox License (Long)</button>
+      </form>
+      <form method="post" action="/actions/help/license">
+        <input type="hidden" name="kind" value="meshtastic" />
+        <button class="button ghost" type="submit">Meshtastic License</button>
+      </form>
+      <form method="post" action="/actions/help/license">
+        <input type="hidden" name="kind" value="luckfox" />
+        <button class="button ghost" type="submit">About Luckfox</button>
+      </form>
+      <form method="post" action="/actions/help/license">
+        <input type="hidden" name="kind" value="ubuntu" />
+        <button class="button ghost" type="submit">About Ubuntu</button>
+      </form>
+    </div>
+  </div>
+  </div>
+  <div class="subpanel{% if active_section == 'help' and active_sub != 'pinouts' %} hidden{% endif %}" data-sub="pinouts">
+  <div class="card">
+    <div class="card-header">
+      <h2>Pinouts</h2>
+      <p>Hardware reference pinouts.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/help/pinout">
+        <input type="hidden" name="kind" value="femtofox" />
+        <button class="button ghost" type="submit">Femtofox Pro/CE</button>
+      </form>
+      <form method="post" action="/actions/help/pinout">
+        <input type="hidden" name="kind" value="zero" />
+        <button class="button ghost" type="submit">Femtofox Zero</button>
+      </form>
+      <form method="post" action="/actions/help/pinout">
+        <input type="hidden" name="kind" value="tiny" />
+        <button class="button ghost" type="submit">Femtofox Tiny</button>
+      </form>
+      <form method="post" action="/actions/help/pinout">
+        <input type="hidden" name="kind" value="luckfox" />
+        <button class="button ghost" type="submit">Luckfox Pico Mini</button>
+      </form>
+    </div>
+  </div>
+  </div>
+</section>
+<section class="grid section-panel{% if active_section != 'system-actions' %} hidden{% endif %}" data-section="system-actions" role="tabpanel">
+{% if notice and notice_section == "system-actions" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="system-actions" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+  <div class="card">
+    <div class="card-header">
+      <h2>System Actions</h2>
+      <p>Reboot or shut down the device.</p>
+    </div>
+    <div class="button-stack">
+      <form method="post" action="/actions/system/reboot" onsubmit="return confirm('Reboot the system now?');">
+        <input type="hidden" name="confirm" value="reboot" />
+        <button class="button ghost" type="submit">Reboot</button>
+      </form>
+      <form method="post" action="/actions/system/shutdown" onsubmit="return confirm('Shut down the system now?');">
+        <input type="hidden" name="confirm" value="shutdown" />
+        <button class="button ghost" type="submit">Shutdown</button>
+      </form>
+    </div>
+  </div>
+</section>
+<section class="grid section-panel{% if active_section != 'wizard' %} hidden{% endif %}" data-section="wizard" role="tabpanel">
+{% if notice and notice_section == "wizard" %}
+<pre class="notice {{ notice_kind or "info" }}" data-notice-section="wizard" data-notice-sub="{{ notice_sub or '' }}">{{ notice }}</pre>
+{% endif %}
+  <div class="card">
+    <div class="card-header">
+      <h2>Install Wizard</h2>
+      <p>Apply initial system and Meshtastic configuration.</p>
+    </div>
+    <form class="form-grid" method="post" action="/actions/wizard">
+      <label>
+        <span>Timezone</span>
+        <input type="text" name="timezone" placeholder="America/Los_Angeles" />
+      </label>
+      <label>
+        <span>Date</span>
+        <input type="date" name="date_value" />
+      </label>
+      <label>
+        <span>Time</span>
+        <input type="time" name="time_value" step="1" />
+      </label>
+      <label>
+        <span>Hostname</span>
+        <input type="text" name="hostname" placeholder="{{ status.hostname }}" />
+      </label>
+      <label>
+        <span>Wi-Fi SSID</span>
+        <input type="text" name="wifi_ssid" />
+      </label>
+      <label>
+        <span>Wi-Fi Password</span>
+        <input type="password" name="wifi_psk" />
+      </label>
+      <label>
+        <span>Wi-Fi Country</span>
+        <input type="text" name="wifi_country" placeholder="US" />
+      </label>
+      <label>
+        <span>LoRa Radio Model</span>
+        <select name="radio_model">
+          <option value="">Leave unchanged</option>
+          {% for value, label in radio_options %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Config URL</span>
+        <input type="text" name="config_url" />
+      </label>
+      <label>
+        <span>Private Key (base64)</span>
+        <input type="password" name="private_key" />
+      </label>
+      <label>
+        <span>Public Key (base64)</span>
+        <input type="text" name="public_key" />
+      </label>
+      <button class="button primary" type="submit">Run Wizard</button>
+    </form>
+  </div>
+</section>
+
+</div>
+</div>
+
+<script>
+  (() => {
+    const buttons = Array.from(document.querySelectorAll('.nav-item'));
+    const panels = Array.from(document.querySelectorAll('.section-panel'));
+    const subnavLists = Array.from(document.querySelectorAll('.subnav-list'));
+    const menu = document.querySelector('.sidebar');
+    const backdrop = document.querySelector('.sidebar-backdrop');
+    const toggle = document.querySelector('.nav-toggle');
+    if (!buttons.length || !panels.length) {
+      return;
+    }
+
+    const stored = window.localStorage.getItem('mpwrd_config_section');
+    const params = new URLSearchParams(window.location.search);
+    const queryTab = params.get('section') || '';
+    const querySub = params.get('sub') || '';
+    const defaultTab = buttons[0].dataset.section;
+    const serverActiveSection = document.querySelector('.nav-item.active')?.dataset.section || '';
+    const serverActiveSub =
+      document.querySelector('.subnav-list.active .subnav-item.active')?.dataset.sub || '';
+
+    const openMenu = () => {
+      document.body.classList.add('menu-open');
+      toggle?.setAttribute('aria-expanded', 'true');
+      menu?.setAttribute('aria-hidden', 'false');
+      backdrop?.setAttribute('aria-hidden', 'false');
+    };
+
+    const closeMenu = () => {
+      document.body.classList.remove('menu-open');
+      toggle?.setAttribute('aria-expanded', 'false');
+      menu?.setAttribute('aria-hidden', 'true');
+      backdrop?.setAttribute('aria-hidden', 'true');
+    };
+
+    const isValidTab = (tab) => buttons.some((button) => button.dataset.section === tab);
+
+    const sectionInfo = new Map();
+    const subPanelsBySection = new Map();
+    const noticeEl = document.querySelector('.notice[data-notice-section]');
+
+    const activateSub = (section, sub) => {
+      const info = sectionInfo.get(section);
+      if (!info) {
+        return;
+      }
+      const { subButtons, defaultSub } = info;
+      const subPanels = subPanelsBySection.get(section) || [];
+      const isValidSub = subButtons.some((button) => button.dataset.sub === sub);
+      const activeSub = isValidSub ? sub : defaultSub;
+      subButtons.forEach((button) => {
+        const isActive = button.dataset.sub === activeSub;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      subPanels.forEach((panel) => {
+        panel.classList.toggle('hidden', panel.dataset.sub !== activeSub);
+      });
+      window.localStorage.setItem(`mpwrd_config_sub_${section}`, activeSub);
+    };
+
+    panels.forEach((panel) => {
+      const section = panel.dataset.section;
+      const subPanels = Array.from(panel.querySelectorAll('.subpanel'));
+      if (subPanels.length) {
+        subPanelsBySection.set(section, subPanels);
+      }
+    });
+
+    subnavLists.forEach((list) => {
+      const section = list.dataset.section;
+      const subButtons = Array.from(list.querySelectorAll('.subnav-item'));
+      if (!subButtons.length) {
+        return;
+      }
+      const defaultSub = subButtons[0].dataset.sub;
+      sectionInfo.set(section, { list, subButtons, defaultSub });
+      subButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          activate(section);
+          activateSub(section, button.dataset.sub);
+          closeMenu();
+        });
+      });
+    });
+
+    const setExpanded = (section) => {
+      subnavLists.forEach((list) => {
+        const isExpanded = list.dataset.section === section;
+        list.classList.toggle('expanded', isExpanded);
+      });
+    };
+
+    const activate = (tab, options = {}) => {
+      const { resetSub = false } = options;
+      const active = isValidTab(tab) ? tab : defaultTab;
+      buttons.forEach((button) => {
+        const isActive = button.dataset.section === active;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      panels.forEach((panel) => {
+        const isActive = panel.dataset.section === active;
+        panel.classList.toggle('hidden', !isActive);
+      });
+      sectionInfo.forEach((info, section) => {
+        const isActive = section === active;
+        info.list.classList.toggle('active', isActive);
+        info.list.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+      });
+      setExpanded(active);
+      window.localStorage.setItem('mpwrd_config_section', active);
+      let targetSub = null;
+      if (resetSub) {
+        targetSub = sectionInfo.get(active)?.defaultSub || null;
+      } else {
+        const storedSub = window.localStorage.getItem(`mpwrd_config_sub_${active}`);
+        const useQuerySub = querySub && active === queryTab;
+        const useServerSub = serverActiveSub && active === serverActiveSection;
+        targetSub = useQuerySub ? querySub : useServerSub ? serverActiveSub : storedSub;
+      }
+      activateSub(active, targetSub);
+      maybeLoadDashboard(active);
+      maybeLoadNetworking(active);
+      maybeLoadTime(active);
+      maybeLoadServiceStates(active);
+      maybeLoadKernel(active);
+      maybeLoadMeshtastic(active);
+      maybeLoadSoftware(active);
+      maybeLoadWebUiStatus(active);
+      if (noticeEl) {
+        const noticeSection = noticeEl.dataset.noticeSection;
+        const noticeSub = noticeEl.dataset.noticeSub;
+        if (noticeSection === active && noticeSub) {
+          const target = document.querySelector(
+            `.section-panel[data-section="${noticeSection}"] .subpanel[data-sub="${noticeSub}"]`
+          );
+          if (target) {
+            target.prepend(noticeEl);
+          }
+        }
+      }
+    };
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const section = button.dataset.section;
+        const info = sectionInfo.get(section);
+        const hasChildren = info && info.subButtons.length > 0;
+        if (hasChildren) {
+          setExpanded(section);
+          openMenu();
+          return;
+        }
+        activate(section);
+        closeMenu();
+      });
+    });
+
+    const updateFormAction = (form) => {
+      if (!form || !form.action) {
+        return;
+      }
+      const actionUrl = new URL(form.action, window.location.origin);
+      if (!actionUrl.pathname.startsWith('/actions/')) {
+        return;
+      }
+      const panel = form.closest('.section-panel');
+      const subpanel = form.closest('.subpanel');
+      const section = panel?.dataset.section
+        || document.querySelector('.nav-item.active')?.dataset.section;
+      const sub = subpanel?.dataset.sub;
+      if (!section) {
+        return;
+      }
+      actionUrl.searchParams.set('section', section);
+      if (sub) {
+        actionUrl.searchParams.set('sub', sub);
+      } else {
+        actionUrl.searchParams.delete('sub');
+      }
+      form.action = actionUrl.toString();
+    };
+
+    const kernelState = { loaded: false, loading: false };
+    const meshtasticState = { loaded: false, loading: false };
+    const softwareState = { loaded: false, loading: false };
+    const dashboardState = { loaded: false, loading: false };
+    const networkingState = { loaded: false, loading: false };
+    const timeState = { loaded: false, loading: false };
+    const serviceState = { loaded: false, loading: false };
+    const webUiState = { loaded: false, loading: false };
+
+    const escapeHtml = (value) => (
+      String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    );
+
+    const loadKernelModules = async () => {
+      if (kernelState.loaded || kernelState.loading) {
+        return;
+      }
+      kernelState.loading = true;
+      const bootEl = document.querySelector('[data-kernel="boot"]');
+      const activeEl = document.querySelector('[data-kernel="active"]');
+      const blacklistEl = document.querySelector('[data-kernel="blacklist"]');
+      const listEl = document.querySelector('[data-kernel="modules"]');
+      try {
+        const response = await fetch('/api/kernel-modules', { credentials: 'same-origin' });
+        const data = await response.json();
+        if (bootEl) bootEl.textContent = data.boot || 'None';
+        if (activeEl) activeEl.textContent = data.active || 'None';
+        if (blacklistEl) blacklistEl.textContent = data.blacklist || 'None';
+        if (listEl && Array.isArray(data.modules)) {
+          const rows = [];
+          data.modules.forEach((module) => {
+            const name = escapeHtml(module.name || '');
+            const flags = [];
+            flags.push(`<span class="chip ${module.loaded ? 'chip-active' : ''}">L</span>`);
+            flags.push(`<span class="chip ${module.boot ? 'chip-active' : ''}">B</span>`);
+            flags.push(`<span class="chip ${module.blacklisted ? 'chip-danger' : ''}">X</span>`);
+            rows.push(
+              `<details class="details module-row">` +
+              `<summary class="module-summary">` +
+              `<span class="module-name">${name}</span>` +
+              `<span class="module-flags">${flags.join('')}</span>` +
+              `</summary>` +
+              `<div class="module-actions button-stack">` +
+              `<form method="post" action="/actions/kernel-modules">` +
+              `<input type="hidden" name="name" value="${name}" />` +
+              `<input type="hidden" name="action" value="enable" />` +
+              `<button class="button ghost" type="submit">Enable</button>` +
+              `</form>` +
+              `<form method="post" action="/actions/kernel-modules">` +
+              `<input type="hidden" name="name" value="${name}" />` +
+              `<input type="hidden" name="action" value="disable" />` +
+              `<button class="button ghost" type="submit">Disable</button>` +
+              `</form>` +
+              `<form method="post" action="/actions/kernel-modules">` +
+              `<input type="hidden" name="name" value="${name}" />` +
+              `<input type="hidden" name="action" value="blacklist-set" />` +
+              `<button class="button ghost" type="submit">Blacklist</button>` +
+              `</form>` +
+              `<form method="post" action="/actions/kernel-modules">` +
+              `<input type="hidden" name="name" value="${name}" />` +
+              `<input type="hidden" name="action" value="blacklist-clear" />` +
+              `<button class="button ghost" type="submit">Un-blacklist</button>` +
+              `</form>` +
+              `</div>` +
+              `</details>`
+            );
+          });
+          listEl.innerHTML = rows.join('') || '<div class="hint">No modules found.</div>';
+        }
+        kernelState.loaded = true;
+      } catch (err) {
+        if (listEl) {
+          listEl.innerHTML = '<div class="notice error">Failed to load kernel modules.</div>';
+        }
+      } finally {
+        kernelState.loading = false;
+      }
+    };
+
+    const maybeLoadKernel = (section) => {
+      if (section === 'kernel') {
+        loadKernelModules();
+      }
+    };
+
+    const applyStatus = (data) => {
+      if (!data || typeof data !== 'object') {
+        return;
+      }
+      document.querySelectorAll('[data-status]').forEach((el) => {
+        const key = el.dataset.status;
+        if (!key || !(key in data)) {
+          return;
+        }
+        const value = data[key];
+        if (value === null || value === undefined || value === '') {
+          el.textContent = 'Unavailable';
+        } else {
+          el.textContent = value;
+        }
+      });
+      document.querySelectorAll('select[data-status-select]').forEach((select) => {
+        const key = select.dataset.statusSelect;
+        if (!key || !(key in data)) {
+          return;
+        }
+        const value = data[key];
+        if (value === null || value === undefined || value === '') {
+          return;
+        }
+        const hasValue = Array.from(select.options).some((opt) => opt.value === value);
+        if (hasValue) {
+          select.value = value;
+        }
+      });
+      const loraEl = document.querySelector('[data-status-lora]');
+      if (loraEl) {
+        if (data.lora_error) {
+          loraEl.textContent = data.lora_error;
+        } else if (data.lora_settings && typeof data.lora_settings === 'object') {
+          const lines = Object.entries(data.lora_settings).map(([key, value]) => `${key}:${value}`);
+          loraEl.textContent = lines.length ? lines.join('\n') : 'No LoRa settings found.';
+        }
+      }
+      const loraForm = document.querySelector('[data-lora-form]');
+      if (loraForm && data.lora_settings && typeof data.lora_settings === 'object') {
+        const setField = (name, value) => {
+          if (value === null || value === undefined || value === '') {
+            return;
+          }
+          const field = loraForm.querySelector(`[name=\"${name}\"]`);
+          if (field) {
+            field.value = String(value);
+          }
+        };
+        const lora = data.lora_settings;
+        setField('region', lora.lora_region);
+        setField('use_preset', lora.lora_usePreset);
+        setField('preset', lora.lora_modemPreset);
+        setField('bandwidth', lora.lora_bandwidth);
+        setField('spread_factor', lora.lora_spreadFactor);
+        setField('coding_rate', lora.lora_codingRate);
+        setField('frequency_offset', lora.lora_frequencyOffset);
+        setField('hop_limit', lora.lora_hopLimit);
+        setField('tx_enabled', lora.lora_txEnabled);
+        setField('tx_power', lora.lora_txPower);
+        setField('channel_num', lora.lora_channelNum);
+        setField('override_duty_cycle', lora.lora_overrideDutyCycle);
+        setField('sx126x_rx_boosted_gain', lora.lora_sx126xRxBoostedGain);
+        setField('override_frequency', lora.lora_overrideFrequency);
+        setField('ignore_mqtt', lora.lora_ignoreMqtt);
+        setField('ok_to_mqtt', lora.lora_configOkToMqtt);
+      }
+    };
+
+    const applyDashboard = (data) => {
+      if (!data || typeof data !== 'object') {
+        return;
+      }
+      document.querySelectorAll('[data-dashboard]').forEach((el) => {
+        const key = el.dataset.dashboard;
+        if (!key || !(key in data)) {
+          return;
+        }
+        const value = data[key];
+        if (value === null || value === undefined || value === '') {
+          el.textContent = 'Unavailable';
+        } else {
+          el.textContent = value;
+        }
+      });
+    };
+
+    const applyTime = (data) => {
+      if (!data || typeof data !== 'object') {
+        return;
+      }
+      document.querySelectorAll('[data-time]').forEach((el) => {
+        const key = el.dataset.time;
+        if (!key || !(key in data)) {
+          return;
+        }
+        const value = data[key];
+        if (value === null || value === undefined || value === '') {
+          el.textContent = 'Unavailable';
+        } else {
+          el.textContent = value;
+        }
+      });
+    };
+
+    const applyServiceStates = (data) => {
+      if (!data || typeof data !== 'object') {
+        return;
+      }
+      document.querySelectorAll('[data-service]').forEach((el) => {
+        const key = el.dataset.service;
+        if (!key || !(key in data)) {
+          return;
+        }
+        const value = data[key];
+        if (value === null || value === undefined || value === '') {
+          el.textContent = 'Unavailable';
+        } else {
+          el.textContent = value;
+        }
+      });
+    };
+
+    const applyWebUi = (data) => {
+      if (!data || typeof data !== 'object') {
+        return;
+      }
+      document.querySelectorAll('[data-webui]').forEach((el) => {
+        const key = el.dataset.webui;
+        if (!key || !(key in data)) {
+          return;
+        }
+        const value = data[key];
+        if (key === 'note') {
+          const text = value || '';
+          el.textContent = text;
+          el.classList.toggle('hidden', !text);
+          return;
+        }
+        if (value === null || value === undefined || value === '') {
+          el.textContent = 'Unavailable';
+        } else {
+          el.textContent = value;
+        }
+      });
+    };
+
+    const loadMeshtasticStatus = async () => {
+      if (meshtasticState.loaded || meshtasticState.loading) {
+        return;
+      }
+      meshtasticState.loading = true;
+      try {
+        const response = await fetch('/api/meshtastic-status', { credentials: 'same-origin' });
+        if (!response.ok) {
+          throw new Error('Failed to fetch Meshtastic status.');
+        }
+        const data = await response.json();
+        applyStatus(data);
+        meshtasticState.loaded = true;
+      } catch (err) {
+        // keep placeholders on failure
+      } finally {
+        meshtasticState.loading = false;
+      }
+    };
+
+    const maybeLoadMeshtastic = (section) => {
+      if (section === 'meshtastic' || section === 'utilities') {
+        loadMeshtasticStatus();
+      }
+    };
+
+    const loadDashboard = async () => {
+      if (dashboardState.loaded || dashboardState.loading) {
+        return;
+      }
+      dashboardState.loading = true;
+      try {
+        const response = await fetch('/api/dashboard', { credentials: 'same-origin' });
+        if (!response.ok) {
+          throw new Error('Failed to fetch dashboard.');
+        }
+        const data = await response.json();
+        applyDashboard(data);
+        dashboardState.loaded = true;
+      } catch (err) {
+        // keep placeholders on failure
+      } finally {
+        dashboardState.loading = false;
+      }
+    };
+
+    const maybeLoadDashboard = (section) => {
+      if (section === 'home') {
+        loadDashboard();
+      }
+    };
+
+    const loadNetworkingStatus = async () => {
+      if (networkingState.loaded || networkingState.loading) {
+        return;
+      }
+      networkingState.loading = true;
+      try {
+        const response = await fetch('/api/networking-status', { credentials: 'same-origin' });
+        if (!response.ok) {
+          throw new Error('Failed to fetch networking status.');
+        }
+        const data = await response.json();
+        applyStatus(data);
+        networkingState.loaded = true;
+      } catch (err) {
+        // keep placeholders on failure
+      } finally {
+        networkingState.loading = false;
+      }
+    };
+
+    const maybeLoadNetworking = (section) => {
+      if (section === 'networking') {
+        loadNetworkingStatus();
+      }
+    };
+
+    const loadTimeStatus = async () => {
+      if (timeState.loaded || timeState.loading) {
+        return;
+      }
+      timeState.loading = true;
+      try {
+        const response = await fetch('/api/time-status', { credentials: 'same-origin' });
+        if (!response.ok) {
+          throw new Error('Failed to fetch time status.');
+        }
+        const data = await response.json();
+        applyTime(data);
+        timeState.loaded = true;
+      } catch (err) {
+        // keep placeholders on failure
+      } finally {
+        timeState.loading = false;
+      }
+    };
+
+    const maybeLoadTime = (section) => {
+      if (section === 'time') {
+        loadTimeStatus();
+      }
+    };
+
+    const loadServiceStates = async () => {
+      if (serviceState.loaded || serviceState.loading) {
+        return;
+      }
+      serviceState.loading = true;
+      try {
+        const response = await fetch('/api/service-states', { credentials: 'same-origin' });
+        if (!response.ok) {
+          throw new Error('Failed to fetch service states.');
+        }
+        const data = await response.json();
+        applyServiceStates(data);
+        serviceState.loaded = true;
+      } catch (err) {
+        // keep placeholders on failure
+      } finally {
+        serviceState.loading = false;
+      }
+    };
+
+    const maybeLoadServiceStates = (section) => {
+      if (section === 'networking' || section === 'time') {
+        loadServiceStates();
+      }
+    };
+
+    const loadWebUiStatus = async () => {
+      if (webUiState.loaded || webUiState.loading) {
+        return;
+      }
+      webUiState.loading = true;
+      try {
+        const response = await fetch('/api/web-ui-status', { credentials: 'same-origin' });
+        if (!response.ok) {
+          throw new Error('Failed to fetch web UI status.');
+        }
+        const data = await response.json();
+        applyWebUi(data);
+        webUiState.loaded = true;
+      } catch (err) {
+        // keep placeholders on failure
+      } finally {
+        webUiState.loading = false;
+      }
+    };
+
+    const maybeLoadWebUiStatus = (section) => {
+      if (section === 'utilities') {
+        loadWebUiStatus();
+      }
+    };
+
+    const loadSoftwarePackages = async () => {
+      if (softwareState.loaded || softwareState.loading) {
+        return;
+      }
+      const container = document.querySelector('[data-software-packages]');
+      if (!container) {
+        return;
+      }
+      softwareState.loading = true;
+      try {
+        container.innerHTML = '<div class=\"hint\">Loading packages…</div>';
+        const response = await fetch('/api/software-packages', { credentials: 'same-origin' });
+        if (!response.ok) {
+          throw new Error('Failed to load packages.');
+        }
+        const html = await response.text();
+        container.innerHTML = html;
+        container.querySelectorAll('form').forEach((form) => updateFormAction(form));
+        softwareState.loaded = true;
+      } catch (err) {
+        container.innerHTML = '<div class=\"notice error\">Failed to load packages.</div>';
+      } finally {
+        softwareState.loading = false;
+      }
+    };
+
+    const maybeLoadSoftware = (section) => {
+      if (section === 'software') {
+        loadSoftwarePackages();
+      }
+    };
+
+    document.addEventListener('submit', (event) => {
+      const form = event.target;
+      if (form instanceof HTMLFormElement) {
+        updateFormAction(form);
+      }
+    });
+
+    toggle?.addEventListener('click', () => {
+      if (document.body.classList.contains('menu-open')) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    });
+
+    backdrop?.addEventListener('click', () => closeMenu());
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeMenu();
+      }
+    });
+
+    const initial = queryTab || serverActiveSection || stored || defaultTab;
+    activate(initial);
+    if (queryTab || querySub) {
+      params.delete('section');
+      params.delete('sub');
+      const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+      window.history.replaceState(null, '', clean);
+    }
+    closeMenu();
+  })();
+</script>
+{% endblock %}

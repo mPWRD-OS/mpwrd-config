@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card login-card">
+  <div class="card-header">
+    <h1>Sign in</h1>
+    <p>Authenticate with a local Unix account.</p>
+  </div>
+  <form method="post" action="/login" class="form-grid">
+    <label>
+      <span>Username</span>
+      <input type="text" name="username" autocomplete="username" required />
+    </label>
+    <label>
+      <span>Password</span>
+      <input id="login-password" type="password" name="password" autocomplete="current-password" required />
+    </label>
+    <div class="checkbox-row">
+      <input id="show-password" type="checkbox" />
+      <label for="show-password">Show password</label>
+    </div>
+    {% if error %}
+    <div class="notice error">{{ error }}</div>
+    {% endif %}
+    <button class="button primary" type="submit">Continue</button>
+  </form>
+</section>
+<script>
+  const showToggle = document.getElementById("show-password");
+  const passwordField = document.getElementById("login-password");
+  if (showToggle && passwordField) {
+    showToggle.addEventListener("change", () => {
+      passwordField.type = showToggle.checked ? "text" : "password";
+    });
+  }
+</script>
+{% endblock %}

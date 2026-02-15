@@ -1,0 +1,1 @@
+"""MPWRD configuration package."""

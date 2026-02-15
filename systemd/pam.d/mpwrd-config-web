@@ -1,0 +1,7 @@
+#%PAM-1.0
+# MPWRD Config Web UI authentication
+# Use standard local account policies without requiring a TTY.
+
+auth        include     common-auth
+account     include     common-account
+session     include     common-session-noninteractive
