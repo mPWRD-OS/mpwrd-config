@@ -26,6 +26,13 @@ jobs:
             python3-build \
             python3-venv
 
+      - name: Run unit tests
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install --disable-pip-version-check --no-cache-dir tomli tomli-w
+          python -m unittest -v
+
       - name: Stamp CI version
         run: |
           BASE_VERSION=$(dpkg-parsechangelog -SVersion)
