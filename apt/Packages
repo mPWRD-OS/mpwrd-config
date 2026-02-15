@@ -1,5 +1,5 @@
 Package: mpwrd-config
-Version: 1:0.0.1-1
+Version: 1:0.0.2-1
 Architecture: all
 Maintainer: Ruledo <ruledo707@gmail.com>
 Installed-Size: 114
@@ -7,11 +7,11 @@ Depends: python3, python3-venv, pipx, python3-pam, qrencode, python3-protobuf
 Conflicts: femto-config
 Replaces: femto-config
 Provides: femto-config
-Filename: ./mpwrd-config_0.0.1-1_all.deb
-Size: 95512
-MD5sum: 47c3fe6aaa4890e2b78165203a48cc1e
-SHA1: 0481e3783b2a1cf83a6f873185d7673ed677c819
-SHA256: 247809061ef1a658ad4cc2254147fc2a35538d7efeb7ca4f093e8a4b880176ed
+Filename: ./mpwrd-config_0.0.2-1_all.deb
+Size: 95562
+MD5sum: cb50d57fd912f5ecf25627e550a5e0b9
+SHA1: 9a4075fa2028a49e1ca3bfb62d2d355ca7b6c463
+SHA256: 3952c0d1447e7f9d95a3f5eed8446723b5894c665cf31ee26e717f55aac7e16a
 Section: admin
 Priority: optional
 Homepage: https://github.com/Ruledo/mpwrd-config
