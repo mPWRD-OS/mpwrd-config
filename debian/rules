@@ -1,20 +1,6 @@
 #!/usr/bin/make -f
 
+export PYBUILD_NAME=mpwrd-config
+
 %:
-	dh $@
-
-override_dh_auto_build:
-	python3 -m build --skip-dependency-check --no-isolation --wheel --outdir debian/wheels
-
-override_dh_auto_configure:
-	:
-
-override_dh_auto_test:
-	:
-
-override_dh_auto_install:
-	mkdir -p debian/mpwrd-config/usr/share/mpwrd-config/wheels
-	cp debian/wheels/mpwrd_config-*.whl debian/mpwrd-config/usr/share/mpwrd-config/wheels/
-
-override_dh_auto_clean:
-	rm -rf build debian/wheels *.egg-info
+	dh $@ --with python3 --buildsystem=pybuild

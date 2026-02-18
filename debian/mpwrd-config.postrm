@@ -1,14 +1,9 @@
 #!/bin/sh
 set -e
 
-PIPX_HOME=/opt/mpwrd-config/pipx
-PIPX_BIN_DIR=/usr/local/bin
-export PIPX_HOME PIPX_BIN_DIR
+#DEBHELPER#
 
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    if command -v pipx >/dev/null 2>&1; then
-        pipx uninstall mpwrd-config >/dev/null 2>&1 || true
-    fi
     systemctl daemon-reload >/dev/null 2>&1 || true
 fi
 

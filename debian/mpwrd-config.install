@@ -1,3 +1,5 @@
 systemd/*.service lib/systemd/system/
 systemd/*.socket lib/systemd/system/
 systemd/pam.d/mpwrd-config-web etc/pam.d/
+mpwrd_config/web_templates/*.html usr/share/mpwrd-config/templates/
+mpwrd_config/web_static/*.css usr/share/mpwrd-config/static/
