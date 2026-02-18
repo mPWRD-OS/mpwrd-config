@@ -1,0 +1,36 @@
+name: Build Python Pkg (Poetry)
+
+on:
+  push:
+    branches:
+      - developer
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-py:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python-version:
+          - "3.11" # Debian 12
+          - "3.12" # Ubuntu 24.04
+          - "3.13" # Debian 13
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install poetry
+        run: pipx install poetry
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Build package
+        run: poetry build
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: mpwrd-config-py${{ matrix.python-version }}
+          path: dist/
