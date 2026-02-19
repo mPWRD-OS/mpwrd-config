@@ -1,22 +1,4 @@
-mpwrd-config (1:0.0.2-1) unstable; urgency=medium
-
-  * Publish APT repo automation and README install snippet.
-
- -- Ruledo <ruledo707@gmail.com>  Sun, 15 Feb 2026 21:10:06 +0000
-
-mpwrd-config (1:0.0.1-1) unstable; urgency=medium
-
-  * Add epoch to preserve upgrade path after version reset.
-
- -- Ruledo <ruledo707@gmail.com>  Sun, 15 Feb 2026 11:20:22 +0000
-
-mpwrd-config (0.0-1) unstable; urgency=medium
-
-  * Initial public release.
-
- -- Ruledo <ruledo707@gmail.com>  Sun, 15 Feb 2026 10:46:26 +0000
-
-mpwrd-config (0.1.8-1) unstable; urgency=medium
+mpwrd-config (1:0.1.8-1) unstable; urgency=medium
 
   * Fix protobuf MessageToDict compatibility in Meshtastic status.
 
