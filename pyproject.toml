@@ -1,3 +1,26 @@
 [build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "mpwrd-config"
+version = "0.1.8"
+description = "MPWRD configuration tooling"
+readme = "README.md"
+authors = [{ name = "Ruledo", email = "ruledo707@gmail.com" }]
+requires-python = ">=3.10,<3.15"
+dependencies = [
+    "tomli>=2.0.1; python_version < '3.11'",
+    "tomli-w>=1.0.0",
+    "six>=1.16.0",
+    "InquirerPy>=0.3.4",
+    "meshtastic>=2.7.0,<3.0.0",
+    "protobuf>=3.20.0",
+]
+
+[project.scripts]
+mpwrd-config = "mpwrd_config.tui_entry:main"
+mpwrd-config-cli = "mpwrd_config.cli:main"
+
+[tool.poetry]
+packages = [{ include = "mpwrd_config" }]
