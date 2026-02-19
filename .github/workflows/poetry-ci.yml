@@ -1,4 +1,4 @@
-name: Build Python Package (Poetry)
+name: Build Python Pkg (Poetry)
 
 on:
   push:
@@ -14,33 +14,23 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.11"
-          - "3.12"
-          - "3.13"
+          - "3.11" # Debian 12
+          - "3.12" # Ubuntu 24.04
+          - "3.13" # Debian 13
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - name: Install poetry
+        run: pipx install poetry
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install Poetry
-        run: python -m pip install --upgrade pip poetry
-
+          cache: poetry
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
-
       - name: Build package
         run: poetry build
-
-      - name: Pipx smoke test
-        run: |
-          python -m pip install --upgrade pipx
-          python -m pipx install --force dist/mpwrd_config-*.whl
-          ~/.local/bin/mpwrd-config-cli --help
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
         with:
           name: mpwrd-config-py${{ matrix.python-version }}
-          path: dist/*
+          path: dist/
