@@ -9,9 +9,11 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from google.protobuf.json_format import MessageToDict
 from meshtastic import util as meshtastic_util
@@ -19,7 +21,7 @@ from meshtastic.mesh_interface import MeshInterface
 from meshtastic.protobuf import channel_pb2, config_pb2, module_config_pb2
 from meshtastic.tcp_interface import TCPInterface
 
-from mpwrd_config.system import CommandResult, _run
+from mpwrd_config.system import CommandResult, _run, _run_live
 
 MESHTASTIC_HOST = os.environ.get("MESHTASTIC_HOST", "127.0.0.1")
 MESHTASTIC_TIMEOUT_SEC = float(os.environ.get("MESHTASTIC_TIMEOUT_SEC", "60"))
@@ -352,9 +354,10 @@ def meshtastic_repo_status() -> CommandResult:
     return CommandResult(returncode=0, stdout=message)
 
 
-def set_meshtastic_repo(channel: str, install: bool = True) -> CommandResult:
+def set_meshtastic_repo(channel: str, install: bool = True, stream: bool = False) -> CommandResult:
     if os.geteuid() != 0:
         return CommandResult(returncode=1, stdout="Must be run as root.")
+    runner = _run_live if stream else _run
     channel = channel.strip().lower()
     repo_id = MESHTASTIC_REPO_CHANNELS.get(channel)
     if not repo_id or channel not in MESHTASTIC_PPA_CHANNELS:
@@ -364,20 +367,20 @@ def set_meshtastic_repo(channel: str, install: bool = True) -> CommandResult:
         return CommandResult(returncode=1, stdout=error)
     if repo_kind == "ppa":
         if not shutil.which("add-apt-repository"):
-            _run(["apt", "update"])
-            install_result = _run(["apt", "install", "-y", "software-properties-common"])
+            runner(["apt", "update"])
+            install_result = runner(["apt", "install", "-y", "software-properties-common"])
             if install_result.returncode != 0:
                 return CommandResult(returncode=install_result.returncode, stdout=install_result.stdout)
         for _, _, path in _detect_meshtastic_repos():
             if path.exists():
                 path.unlink(missing_ok=True)
-        add_result = _run(["add-apt-repository", "-y", MESHTASTIC_PPA_CHANNELS[channel]])
+        add_result = runner(["add-apt-repository", "-y", MESHTASTIC_PPA_CHANNELS[channel]])
         if add_result.returncode != 0:
             return CommandResult(returncode=add_result.returncode, stdout=add_result.stdout)
-        update_result = _run(["apt", "update"])
+        update_result = runner(["apt", "update"])
         outputs = [add_result.stdout.strip(), update_result.stdout.strip()]
         if install:
-            install_result = _run(["apt", "install", "-y", "meshtasticd"])
+            install_result = runner(["apt", "install", "-y", "meshtasticd"])
             outputs.append(install_result.stdout.strip())
             code = install_result.returncode
         else:
@@ -407,13 +410,13 @@ def set_meshtastic_repo(channel: str, install: bool = True) -> CommandResult:
         "-c",
         f"curl -fsSL {key_url} | gpg --dearmor | tee {key_path} >/dev/null",
     ]
-    key_result = _run(key_cmd)
+    key_result = runner(key_cmd)
     if key_result.returncode != 0:
         return CommandResult(returncode=key_result.returncode, stdout=key_result.stdout)
-    update_result = _run(["apt", "update"])
+    update_result = runner(["apt", "update"])
     outputs = [update_result.stdout.strip()]
     if install:
-        install_result = _run(["apt", "install", "-y", "meshtasticd"])
+        install_result = runner(["apt", "install", "-y", "meshtasticd"])
         outputs.append(install_result.stdout.strip())
         code = install_result.returncode
     else:
@@ -428,16 +431,97 @@ class MeshtasticResult:
     stdout: str
 
 
-def _connect_meshtastic(wait_for_config: bool = False) -> tuple[MeshtasticResult | None, TCPInterface | None]:
-    try:
-        interface = TCPInterface(MESHTASTIC_HOST, timeout=int(MESHTASTIC_TIMEOUT_SEC))
-    except Exception as exc:
-        return MeshtasticResult(returncode=1, stdout=f"Meshtastic connect failed: {exc}"), None
-    try:
-        if wait_for_config:
-            interface.waitForConfig()
-    except Exception as exc:
-        interface.close()
+class MeshtasticSession:
+    """Reusable Meshtastic TCP session for interactive callers."""
+
+    def __init__(self) -> None:
+        self._interface: TCPInterface | None = None
+        self._config_loaded = False
+
+    def get_interface(
+        self,
+        *,
+        wait_for_config: bool = False,
+        reconnect: bool = False,
+        attempts: int | None = None,
+    ) -> tuple[MeshtasticResult | None, TCPInterface | None]:
+        if reconnect:
+            self.close()
+        if self._interface is None:
+            connect_attempts = 2 if attempts is None else max(1, int(attempts))
+            error, interface = _connect_meshtastic(wait_for_config=False, attempts=connect_attempts)
+            if error or not interface:
+                return error, None
+            self._interface = interface
+            self._config_loaded = False
+        if wait_for_config and not self._config_loaded:
+            try:
+                self._interface.waitForConfig()
+                self._config_loaded = True
+            except Exception:
+                self.close()
+                return (
+                    MeshtasticResult(
+                        returncode=124,
+                        stdout=f"Meshtastic command timed out after {MESHTASTIC_TIMEOUT_SEC:.0f}s.",
+                    ),
+                    None,
+                )
+        return None, self._interface
+
+    def close(self, *, wait: bool = True) -> None:
+        interface = self._interface
+        self._interface = None
+        self._config_loaded = False
+        if interface is None:
+            return
+
+        def _close_interface() -> None:
+            try:
+                interface.close()
+            except Exception:
+                pass
+
+        if wait:
+            _close_interface()
+            return
+        threading.Thread(target=_close_interface, name="meshtastic-close", daemon=True).start()
+
+
+def _connect_meshtastic(
+    wait_for_config: bool = False,
+    attempts: int = 2,
+) -> tuple[MeshtasticResult | None, TCPInterface | None]:
+    attempts = max(1, int(attempts))
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        interface: TCPInterface | None = None
+        try:
+            # Use staged connect so startup can connect without implicitly waiting
+            # for full config download in TCPInterface.__init__.
+            interface = TCPInterface(
+                MESHTASTIC_HOST,
+                timeout=int(MESHTASTIC_TIMEOUT_SEC),
+                connectNow=False,
+                noNodes=True,
+            )
+            interface.myConnect()
+            interface.connect()
+            if wait_for_config:
+                interface.waitForConfig()
+            return None, interface
+        except Exception as exc:
+            last_error = exc
+            if interface is not None:
+                try:
+                    interface.close()
+                except Exception:
+                    pass
+            if attempt + 1 < attempts:
+                time.sleep(1)
+                continue
+    message = str(last_error or "").lower()
+    if "timed out" in message:
         return (
             MeshtasticResult(
                 returncode=124,
@@ -445,7 +529,7 @@ def _connect_meshtastic(wait_for_config: bool = False) -> tuple[MeshtasticResult
             ),
             None,
         )
-    return None, interface
+    return MeshtasticResult(returncode=1, stdout=f"Meshtastic connect failed: {last_error}"), None
 
 
 def _run_meshtastic_cli(command: Sequence[str], label: str | None = None) -> MeshtasticResult:
@@ -470,6 +554,37 @@ def _run_meshtastic_cli(command: Sequence[str], label: str | None = None) -> Mes
     if result.returncode != 0 and not output:
         output = "Meshtastic command failed."
     return MeshtasticResult(returncode=result.returncode, stdout=output)
+
+
+def _run_meshtastic_action(
+    action: Callable[[TCPInterface], MeshtasticResult],
+    *,
+    wait_for_config: bool,
+    session: MeshtasticSession | None = None,
+) -> MeshtasticResult:
+    close_interface = session is None
+    if session is None:
+        error, interface = _connect_meshtastic(wait_for_config=wait_for_config)
+    else:
+        error, interface = session.get_interface(wait_for_config=wait_for_config)
+    if error or not interface:
+        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
+
+    try:
+        return action(interface)
+    except Exception as exc:
+        if session is None:
+            return MeshtasticResult(returncode=1, stdout=f"Meshtastic command failed: {exc}")
+        retry_error, retry_interface = session.get_interface(wait_for_config=wait_for_config, reconnect=True)
+        if retry_error or not retry_interface:
+            return retry_error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
+        try:
+            return action(retry_interface)
+        except Exception as retry_exc:
+            return MeshtasticResult(returncode=1, stdout=f"Meshtastic command failed: {retry_exc}")
+    finally:
+        if close_interface:
+            interface.close()
 
 
 def _interface_info(interface: TCPInterface) -> str:
@@ -642,14 +757,12 @@ def _apply_preferences(node, updates: list[tuple[str, str]]) -> MeshtasticResult
     return MeshtasticResult(returncode=0, stdout="Preferences updated.")
 
 
-def meshtastic_info() -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
-        return MeshtasticResult(returncode=0, stdout=_interface_info(interface))
-    finally:
-        interface.close()
+def meshtastic_info(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    return _run_meshtastic_action(
+        lambda interface: MeshtasticResult(returncode=0, stdout=_interface_info(interface)),
+        wait_for_config=True,
+        session=session,
+    )
 
 
 def _extract_json_block(text: str, marker: str) -> dict[str, Any] | None:
@@ -751,11 +864,12 @@ def _flatten_recursive(prefix: str, data: Any, output: dict[str, Any]) -> None:
     output[prefix.rstrip("_")] = data
 
 
-def meshtastic_config(categories: str, quiet: bool = False) -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def meshtastic_config(
+    categories: str,
+    quiet: bool = False,
+    session: MeshtasticSession | None = None,
+) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         selected = {item.strip().lower() for item in categories.split(",") if item.strip()}
         if "all" in selected:
             selected = {"nodeinfo", "settings", "channels"}
@@ -810,15 +924,16 @@ def meshtastic_config(categories: str, quiet: bool = False) -> MeshtasticResult:
         if not lines:
             return MeshtasticResult(returncode=1, stdout="No configuration data available.")
         return MeshtasticResult(returncode=0, stdout="\n".join(lines))
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def meshtastic_summary() -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def meshtastic_summary(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         lora = node.localConfig.lora
         device = node.localConfig.device
@@ -850,8 +965,12 @@ def meshtastic_summary() -> MeshtasticResult:
             f"Nodes in db:{len(interface.nodes or {})}",
         ]
         return MeshtasticResult(returncode=0, stdout="\n".join(lines))
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
 def meshtastic_snapshot() -> tuple[MeshtasticResult, dict[str, Any]]:
@@ -932,8 +1051,8 @@ def meshtastic_snapshot() -> tuple[MeshtasticResult, dict[str, Any]]:
         interface.close()
 
 
-def config_qr() -> MeshtasticResult:
-    url_result = get_config_url()
+def config_qr(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    url_result = get_config_url(session=session)
     if url_result.returncode != 0:
         return url_result
     url = url_result.stdout.strip()
@@ -979,11 +1098,8 @@ def list_preference_fields() -> MeshtasticResult:
     return MeshtasticResult(returncode=0, stdout="\n".join(lines))
 
 
-def get_preference(field: str) -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def get_preference(field: str, session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         section = field.split(".", 1)[0]
         config = _select_config(node, section)
@@ -994,26 +1110,33 @@ def get_preference(field: str) -> MeshtasticResult:
         if not ok:
             return MeshtasticResult(returncode=1, stdout=value)
         return MeshtasticResult(returncode=0, stdout=value)
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def set_preference(field: str, value: str) -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def set_preference(field: str, value: str, session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         return _apply_preferences(node, [(field, value)])
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def channel_set(index: int, field: str, value: str) -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def channel_set(
+    index: int,
+    field: str,
+    value: str,
+    session: MeshtasticSession | None = None,
+) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         if index < 0 or index >= len(node.channels):
             return MeshtasticResult(returncode=1, stdout="Invalid channel index.")
@@ -1027,15 +1150,16 @@ def channel_set(index: int, field: str, value: str) -> MeshtasticResult:
         ch.role = channel_pb2.Channel.Role.PRIMARY if index == 0 else channel_pb2.Channel.Role.SECONDARY
         node.writeChannel(index)
         return MeshtasticResult(returncode=0, stdout="Channel updated.")
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def channel_add(name: str) -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def channel_add(name: str, session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         if len(name) > 10:
             return MeshtasticResult(returncode=1, stdout="Channel name must be shorter than 10 characters.")
         node = _get_node(interface)
@@ -1051,31 +1175,35 @@ def channel_add(name: str) -> MeshtasticResult:
         ch.role = channel_pb2.Channel.Role.SECONDARY
         node.writeChannel(ch.index)
         return MeshtasticResult(returncode=0, stdout="Channel added.")
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def channel_delete(index: int) -> MeshtasticResult:
+def channel_delete(index: int, session: MeshtasticSession | None = None) -> MeshtasticResult:
     if index == 0:
         return MeshtasticResult(returncode=1, stdout="Cannot delete primary channel.")
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         node.deleteChannel(index)
         return MeshtasticResult(returncode=0, stdout="Channel deleted.")
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def channel_enable(index: int) -> MeshtasticResult:
+def channel_enable(index: int, session: MeshtasticSession | None = None) -> MeshtasticResult:
     if index == 0:
         return MeshtasticResult(returncode=1, stdout="Cannot enable primary channel.")
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         if index < 0 or index >= len(node.channels):
             return MeshtasticResult(returncode=1, stdout="Invalid channel index.")
@@ -1083,17 +1211,19 @@ def channel_enable(index: int) -> MeshtasticResult:
         ch.role = channel_pb2.Channel.Role.SECONDARY
         node.writeChannel(index)
         return MeshtasticResult(returncode=0, stdout="Channel enabled.")
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def channel_disable(index: int) -> MeshtasticResult:
+def channel_disable(index: int, session: MeshtasticSession | None = None) -> MeshtasticResult:
     if index == 0:
         return MeshtasticResult(returncode=1, stdout="Cannot disable primary channel.")
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         if index < 0 or index >= len(node.channels):
             return MeshtasticResult(returncode=1, stdout="Invalid channel index.")
@@ -1101,44 +1231,55 @@ def channel_disable(index: int) -> MeshtasticResult:
         ch.role = channel_pb2.Channel.Role.DISABLED
         node.writeChannel(index)
         return MeshtasticResult(returncode=0, stdout="Channel disabled.")
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def channel_set_url(url: str) -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def channel_set_url(url: str, session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         try:
             node.setURL(url, addOnly=False)
             return MeshtasticResult(returncode=0, stdout="Channels updated.")
         except SystemExit as exc:
             return MeshtasticResult(returncode=1, stdout=str(exc))
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def channel_add_url(url: str) -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def channel_add_url(url: str, session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         try:
             node.setURL(url, addOnly=True)
             return MeshtasticResult(returncode=0, stdout="Channels added from URL.")
         except SystemExit as exc:
             return MeshtasticResult(returncode=1, stdout=str(exc))
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def lora_settings() -> tuple[MeshtasticResult, dict[str, Any]]:
-    error, interface = _connect_meshtastic(wait_for_config=True)
+def lora_settings(session: MeshtasticSession | None = None) -> tuple[MeshtasticResult, dict[str, Any]]:
+    close_interface = session is None
+    if session is None:
+        error, interface = _connect_meshtastic(wait_for_config=True)
+    else:
+        error, interface = session.get_interface(wait_for_config=True)
     if error or not interface:
         return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic."), {}
+
     try:
         lora = interface.localNode.localConfig.lora
         info = _interface_info(interface)
@@ -1160,11 +1301,42 @@ def lora_settings() -> tuple[MeshtasticResult, dict[str, Any]]:
             "lora_ignoreMqtt": lora.ignore_mqtt,
             "lora_configOkToMqtt": lora.config_ok_to_mqtt,
         }
+    except Exception:
+        if session is None:
+            return MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic."), {}
+        retry_error, retry_interface = session.get_interface(wait_for_config=True, reconnect=True)
+        if retry_error or not retry_interface:
+            return retry_error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic."), {}
+        lora = retry_interface.localNode.localConfig.lora
+        info = _interface_info(retry_interface)
+        return MeshtasticResult(returncode=0, stdout=info), {
+            "lora_region": lora.region,
+            "lora_usePreset": lora.use_preset,
+            "lora_modemPreset": lora.modem_preset,
+            "lora_bandwidth": lora.bandwidth,
+            "lora_spreadFactor": lora.spread_factor,
+            "lora_codingRate": lora.coding_rate,
+            "lora_frequencyOffset": lora.frequency_offset,
+            "lora_hopLimit": lora.hop_limit,
+            "lora_txEnabled": lora.tx_enabled,
+            "lora_txPower": lora.tx_power,
+            "lora_channelNum": lora.channel_num,
+            "lora_overrideDutyCycle": lora.override_duty_cycle,
+            "lora_sx126xRxBoostedGain": lora.sx126x_rx_boosted_gain,
+            "lora_overrideFrequency": lora.override_frequency,
+            "lora_ignoreMqtt": lora.ignore_mqtt,
+            "lora_configOkToMqtt": lora.config_ok_to_mqtt,
+        }
     finally:
-        interface.close()
+        if close_interface:
+            interface.close()
 
 
-def set_lora_settings(settings: dict[str, Any], attempts: int = 5) -> MeshtasticResult:
+def set_lora_settings(
+    settings: dict[str, Any],
+    attempts: int = 5,
+    session: MeshtasticSession | None = None,
+) -> MeshtasticResult:
     updates: list[tuple[str, str]] = []
     mapping = {
         "region": "lora.region",
@@ -1193,21 +1365,20 @@ def set_lora_settings(settings: dict[str, Any], attempts: int = 5) -> Meshtastic
         updates.append((meshtastic_key, str(value)))
     if not updates:
         return MeshtasticResult(returncode=1, stdout="No LoRa settings provided.")
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         return _apply_preferences(node, updates)
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def get_config_url() -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def get_config_url(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         try:
             url = node.getURL(includeAll=True)
@@ -1216,37 +1387,39 @@ def get_config_url() -> MeshtasticResult:
             return MeshtasticResult(returncode=1, stdout=str(exc))
         except Exception:
             return MeshtasticResult(returncode=1, stdout="Failed to extract configuration URL.")
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def set_config_url(url: str) -> MeshtasticResult:
-    return channel_set_url(url)
+def set_config_url(url: str, session: MeshtasticSession | None = None) -> MeshtasticResult:
+    return channel_set_url(url, session=session)
 
 
-def get_public_key() -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def get_public_key(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         security = interface.localNode.localConfig.security
         key = _format_public_key(security)
         if key == "Public key not found.":
             return MeshtasticResult(returncode=1, stdout=key)
         return MeshtasticResult(returncode=0, stdout=key)
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def set_public_key(key: str) -> MeshtasticResult:
-    return set_preference("security.public_key", f"base64:{key}")
+def set_public_key(key: str, session: MeshtasticSession | None = None) -> MeshtasticResult:
+    return set_preference("security.public_key", f"base64:{key}", session=session)
 
 
-def get_private_key() -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def get_private_key(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         security = interface.localNode.localConfig.security
         key = getattr(security, "private_key", None)
         if not key:
@@ -1254,19 +1427,20 @@ def get_private_key() -> MeshtasticResult:
         if isinstance(key, bytes):
             return MeshtasticResult(returncode=0, stdout=base64.b64encode(key).decode("ascii"))
         return MeshtasticResult(returncode=0, stdout=str(key))
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def set_private_key(key: str) -> MeshtasticResult:
-    return set_preference("security.private_key", f"base64:{key}")
+def set_private_key(key: str, session: MeshtasticSession | None = None) -> MeshtasticResult:
+    return set_preference("security.private_key", f"base64:{key}", session=session)
 
 
-def list_admin_keys() -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def list_admin_keys(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         security = interface.localNode.localConfig.security
         keys = list(getattr(security, "admin_key", []) or [])
         if not keys:
@@ -1275,19 +1449,20 @@ def list_admin_keys() -> MeshtasticResult:
             f"{idx + 1}. {base64.b64encode(key).decode('ascii')}" for idx, key in enumerate(keys)
         )
         return MeshtasticResult(returncode=0, stdout=formatted)
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def add_admin_key(key: str) -> MeshtasticResult:
-    return set_preference("security.admin_key", f"base64:{key}")
+def add_admin_key(key: str, session: MeshtasticSession | None = None) -> MeshtasticResult:
+    return set_preference("security.admin_key", f"base64:{key}", session=session)
 
 
-def clear_admin_keys() -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def clear_admin_keys(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         node = _get_node(interface)
         section = "security"
         config = _select_config(node, section)
@@ -1303,15 +1478,16 @@ def clear_admin_keys() -> MeshtasticResult:
             del security.admin_key[:]
         node.writeConfig(section)
         return MeshtasticResult(returncode=0, stdout="Admin keys cleared.")
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def get_legacy_admin_state() -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def get_legacy_admin_state(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         security = interface.localNode.localConfig.security
         state = getattr(security, "admin_channel_enabled", None)
         if state is True:
@@ -1319,13 +1495,17 @@ def get_legacy_admin_state() -> MeshtasticResult:
         if state is False:
             return MeshtasticResult(returncode=0, stdout="disabled")
         return MeshtasticResult(returncode=1, stdout="error")
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
-def set_legacy_admin_state(enabled: bool) -> MeshtasticResult:
+def set_legacy_admin_state(enabled: bool, session: MeshtasticSession | None = None) -> MeshtasticResult:
     value = "true" if enabled else "false"
-    return set_preference("security.admin_channel_enabled", value)
+    return set_preference("security.admin_channel_enabled", value, session=session)
 
 
 def current_radio() -> MeshtasticResult:
@@ -1383,19 +1563,20 @@ def service_status() -> CommandResult:
     return _run(["systemctl", "is-active", "meshtasticd"])
 
 
-def mesh_test() -> MeshtasticResult:
-    error, interface = _connect_meshtastic(wait_for_config=True)
-    if error or not interface:
-        return error or MeshtasticResult(returncode=1, stdout="Unable to connect to Meshtastic.")
-    try:
+def mesh_test(session: MeshtasticSession | None = None) -> MeshtasticResult:
+    def _build(interface: TCPInterface) -> MeshtasticResult:
         interface.sendText("test", channelIndex=0, wantAck=True)
         try:
             interface.waitForAckNak()
             return MeshtasticResult(returncode=0, stdout="Mesh connectivity confirmed.")
         except MeshInterface.MeshInterfaceError:
             return MeshtasticResult(returncode=1, stdout="Mesh connectivity failed.")
-    finally:
-        interface.close()
+
+    return _run_meshtastic_action(
+        _build,
+        wait_for_config=True,
+        session=session,
+    )
 
 
 def i2c_state(state: str) -> CommandResult:
@@ -1418,10 +1599,12 @@ def i2c_state(state: str) -> CommandResult:
     return CommandResult(returncode=1, stdout="Invalid i2c state.")
 
 
-def upgrade() -> CommandResult:
-    _run(["apt", "update"])
-    return _run(["apt", "install", "--only-upgrade", "meshtasticd"])
+def upgrade(stream: bool = False) -> CommandResult:
+    runner = _run_live if stream else _run
+    runner(["apt", "update"])
+    return runner(["apt", "install", "--only-upgrade", "meshtasticd"])
 
 
-def uninstall() -> CommandResult:
-    return _run(["apt", "remove", "-y", "meshtasticd"])
+def uninstall(stream: bool = False) -> CommandResult:
+    runner = _run_live if stream else _run
+    return runner(["apt", "remove", "-y", "meshtasticd"])

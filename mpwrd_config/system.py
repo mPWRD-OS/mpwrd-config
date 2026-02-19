@@ -15,8 +15,6 @@ WIFI_STATE_PATH = Path("/etc/wifi_state.txt")
 HOSTS_PATH = Path("/etc/hosts")
 TTYD_KEY_PATH = Path("/etc/ssl/private/ttyd.key")
 TTYD_CERT_PATH = Path("/etc/ssl/certs/ttyd.crt")
-WEB_KEY_PATH = Path("/etc/ssl/private/mpwrd-config-web.key")
-WEB_CERT_PATH = Path("/etc/ssl/certs/mpwrd-config-web.crt")
 
 
 @dataclass
@@ -35,6 +33,20 @@ def _run(command: Sequence[str]) -> CommandResult:
             stderr=subprocess.STDOUT,
         )
         return CommandResult(returncode=result.returncode, stdout=result.stdout)
+    except FileNotFoundError:
+        return CommandResult(returncode=127, stdout=f"command not found: {command[0]}")
+    except PermissionError:
+        return CommandResult(returncode=126, stdout=f"permission denied: {command[0]}")
+
+
+def _run_live(command: Sequence[str]) -> CommandResult:
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            text=True,
+        )
+        return CommandResult(returncode=result.returncode, stdout="")
     except FileNotFoundError:
         return CommandResult(returncode=127, stdout=f"command not found: {command[0]}")
     except PermissionError:
@@ -169,58 +181,12 @@ def _regenerate_ttyd_cert(hostname: str) -> CommandResult | None:
     return result
 
 
-def _regenerate_web_cert(hostname: str) -> CommandResult | None:
-    if shutil.which("openssl") is None:
-        return None
-    WEB_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    WEB_CERT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    result = _run(
-        [
-            "openssl",
-            "req",
-            "-new",
-            "-newkey",
-            "rsa:4096",
-            "-days",
-            "3650",
-            "-nodes",
-            "-x509",
-            "-keyout",
-            str(WEB_KEY_PATH),
-            "-out",
-            str(WEB_CERT_PATH),
-            "-subj",
-            f"/CN={hostname}",
-            "-addext",
-            f"subjectAltName=DNS:{hostname}",
-        ]
-    )
-    if result.returncode == 0:
-        try:
-            os.chmod(WEB_KEY_PATH, 0o600)
-            os.chmod(WEB_CERT_PATH, 0o644)
-        except PermissionError:
-            pass
-    return result
-
-
-def ensure_web_ssl() -> CommandResult:
-    hostname = socket.gethostname()
-    if WEB_KEY_PATH.exists() and WEB_CERT_PATH.exists():
-        return CommandResult(returncode=0, stdout="Web UI SSL cert already present.")
-    result = _regenerate_web_cert(hostname)
-    if result is None:
-        return CommandResult(returncode=1, stdout="openssl not found")
-    return result
-
-
 def set_hostname(hostname: str) -> CommandResult:
     old_hostname = socket.gethostname()
     result = _run(["hostnamectl", "set-hostname", hostname])
     _update_hosts(old_hostname, hostname)
     _run(["systemctl", "restart", "avahi-daemon"])
     _regenerate_ttyd_cert(hostname)
-    _regenerate_web_cert(hostname)
     message = result.stdout.strip() or f"Hostname set to {hostname}."
     return CommandResult(returncode=result.returncode, stdout=message)
 

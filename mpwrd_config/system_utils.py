@@ -148,14 +148,6 @@ _LICENSE_MESHTASTIC = (
     "For more information about Meshtastic, visit https://www.meshtastic.org"
 )
 
-_LICENSE_LUCKFOX = (
-    "Luckfox and Luckfox Pico Mini are property of Luckfox Technology. Femtofox does not represent Luckfox Technology in any way, shape or form. Visit their website at https://www.luckfox.com/."
-)
-
-_LICENSE_UBUNTU = (
-    "Ubuntu is a trademark of Canonical. Femtofox does not represent Ubuntu or Canonical in any way, shape or form. Find Ubuntu's license information on their site, https://ubuntu.com/legal. Licenses are also available in `/usr/share/common-licenses`."
-)
-
 
 def _legacy_tool_path(name: str) -> Path | None:
     for base in LEGACY_BIN_DIRS:
@@ -704,10 +696,6 @@ def license_info(kind: str) -> CommandResult:
         return CommandResult(returncode=1, stdout="Long license not found.")
     if kind == "meshtastic":
         return CommandResult(returncode=0, stdout=_LICENSE_MESHTASTIC)
-    if kind == "luckfox":
-        return CommandResult(returncode=0, stdout=_LICENSE_LUCKFOX)
-    if kind == "ubuntu":
-        return CommandResult(returncode=0, stdout=_LICENSE_UBUNTU)
     return CommandResult(returncode=1, stdout="Unknown license selection.")
 
 

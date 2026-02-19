@@ -9,7 +9,7 @@ Homepage: https://github.com/Ruledo/mpwrd-config
 
 Package: mpwrd-config
 Architecture: all
-Depends: ${misc:Depends}, python3, python3-venv, pipx, python3-pam, qrencode, python3-protobuf
+Depends: ${misc:Depends}, python3, python3-venv, pipx, qrencode, python3-protobuf
 Provides: femto-config
 Conflicts: femto-config
 Replaces: femto-config

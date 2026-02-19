@@ -1,0 +1,13 @@
+[Unit]
+Description=MPWRD Watchclock (time change monitor)
+After=meshtasticd.service
+Wants=meshtasticd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env mpwrd-config watchclock run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

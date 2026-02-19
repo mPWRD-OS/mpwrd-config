@@ -1,3 +1,1 @@
 systemd/*.service lib/systemd/system/
-systemd/*.socket lib/systemd/system/
-systemd/pam.d/mpwrd-config-web etc/pam.d/
