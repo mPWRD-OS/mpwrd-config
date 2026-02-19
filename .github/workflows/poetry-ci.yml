@@ -1,0 +1,46 @@
+name: Build Python Package (Poetry)
+
+on:
+  push:
+    branches:
+      - developer
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-py:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        run: python -m pip install --upgrade pip poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Build package
+        run: poetry build
+
+      - name: Pipx smoke test
+        run: |
+          python -m pip install --upgrade pipx
+          python -m pipx install --force dist/mpwrd_config-*.whl
+          ~/.local/bin/mpwrd-config-cli --help
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpwrd-config-py${{ matrix.python-version }}
+          path: dist/*

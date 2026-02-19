@@ -1,4 +1,5 @@
 .venv/
+.poetry-venv/
 __pycache__/
 *.pyc
 *.pyo
