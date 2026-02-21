@@ -26,7 +26,6 @@ from mpwrd_config.meshtastic import (
 )
 from mpwrd_config.software_manager import run_action as run_package_action
 from mpwrd_config.system import CommandResult, _run, ethernet_status, ip_addresses, set_wifi_credentials, wifi_status
-from mpwrd_config.time_config import set_timezone
 
 
 FEMTO_CONF_PATH = Path("/etc/femto.conf")
@@ -568,14 +567,6 @@ def run_usb_config_tool() -> CommandResult:
         else:
             partial_failure = True
             log(f"Invalid LoRa radio name: {raw}")
-
-    if "timezone" in entries:
-        tz = entries["timezone"][0].replace("\\", "")
-        result = set_timezone(tz)
-        if result.returncode != 0:
-            partial_failure = True
-        log(result.stdout.strip() or f"Timezone set to {tz}.")
-        found_config = True
 
     if "meshtastic_url" in entries:
         url = entries["meshtastic_url"][0].replace("\\", "")

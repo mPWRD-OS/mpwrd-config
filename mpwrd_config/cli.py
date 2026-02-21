@@ -84,7 +84,6 @@ from mpwrd_config.system_utils import (
     ttyd_action,
 )
 from mpwrd_config.tui_dialog import main as tui_main
-from mpwrd_config.time_config import current_timezone, set_time, set_timezone, status as time_status
 from mpwrd_config.watchclock import run_watchclock
 from mpwrd_config.wifi_mesh import run as wifi_mesh_run, sync_once as wifi_mesh_sync
 
@@ -255,15 +254,6 @@ def _parse_args() -> argparse.Namespace:
     kernel_unblacklist.add_argument("--name", required=True)
 
     subparsers.add_parser("tui", help="Launch dialog TUI.")
-
-    time_parser = subparsers.add_parser("time", help="Time and timezone management.")
-    time_sub = time_parser.add_subparsers(dest="time_command", required=True)
-    time_sub.add_parser("status", help="Show timedatectl status.")
-    time_sub.add_parser("timezone", help="Show current timezone.")
-    tz_set = time_sub.add_parser("set-timezone", help="Set timezone.")
-    tz_set.add_argument("--name", required=True)
-    time_set = time_sub.add_parser("set-time", help="Set system time.")
-    time_set.add_argument("--value", required=True)
 
     software_parser = subparsers.add_parser("software", help="Software package manager.")
     software_parser.add_argument("--package-dir", type=Path, default=None)
@@ -705,15 +695,6 @@ def main() -> int:
             return _print_result(unblacklist_module(args.name))
     if args.command == "tui":
         return tui_main()
-    if args.command == "time":
-        if args.time_command == "status":
-            return _print_result(time_status())
-        if args.time_command == "timezone":
-            return _print_result(current_timezone())
-        if args.time_command == "set-timezone":
-            return _print_result(set_timezone(args.name))
-        if args.time_command == "set-time":
-            return _print_result(set_time(args.value))
     if args.command == "software":
         package_dir = args.package_dir
         if args.software_command == "list":

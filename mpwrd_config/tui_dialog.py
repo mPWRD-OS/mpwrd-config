@@ -7,7 +7,6 @@ import re
 import subprocess
 import sys
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
@@ -171,8 +170,6 @@ from mpwrd_config.system_utils import (
     ttyd_action,
 )
 from mpwrd_config.system import list_wifi_interfaces, list_ethernet_interfaces
-from mpwrd_config.time_config import current_timezone, set_time, set_timezone, status as time_status
-from mpwrd_config.watchclock import run_watchclock
 from mpwrd_config.wifi_mesh import sync_once as wifi_mesh_sync
 
 T = TypeVar("T")
@@ -554,62 +551,12 @@ def _inputbox(title: str, body: str, default: str = "") -> str | None:
     return str(value).strip()
 
 
-def _safe_date(value: str) -> bool:
-    try:
-        datetime.strptime(value, "%Y-%m-%d")
-        return True
-    except ValueError:
-        return False
-
-
-def _safe_time(value: str) -> bool:
-    try:
-        datetime.strptime(value, "%H:%M:%S")
-        return True
-    except ValueError:
-        return False
-
-
 def _config_path() -> Path:
     return Path(os.getenv("MPWRD_CONFIG_PATH") or DEFAULT_CONFIG_PATH)
 
 
 def _has_wifi_interface() -> bool:
     return len(list_wifi_interfaces()) > 0
-
-
-def _calendar(title: str, body: str, day: int, month: int, year: int) -> str | None:
-    default = f"{year:04d}-{month:02d}-{day:02d}"
-    try:
-        value = inquirer.text(
-            message=f"{title}\n{body}\n(YYYY-MM-DD)",
-            default=default,
-            validate=lambda text: bool(re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", text))
-            and _safe_date(text),
-            style=APP_STYLE,
-        ).execute()
-    except (KeyboardInterrupt, EOFError):
-        return None
-    if not value:
-        return None
-    parsed = datetime.strptime(value, "%Y-%m-%d")
-    return f"{parsed.day:02d}/{parsed.month:02d}/{parsed.year:04d}"
-
-
-def _timebox(title: str, body: str, hour: int, minute: int, second: int) -> str | None:
-    default = f"{hour:02d}:{minute:02d}:{second:02d}"
-    try:
-        value = inquirer.text(
-            message=f"{title}\n{body}\n(HH:MM:SS)",
-            default=default,
-            validate=lambda text: bool(re.fullmatch(r"\\d{2}:\\d{2}:\\d{2}", text)) and _safe_time(text),
-            style=APP_STYLE,
-        ).execute()
-    except (KeyboardInterrupt, EOFError):
-        return None
-    if not value:
-        return None
-    return str(value).strip()
 
 
 def _cli_command(args: list[str]) -> list[str]:
@@ -1727,48 +1674,6 @@ def _system_menu() -> None:
             _run_cli_output(["system", "shutdown"], "Shutdown")
 
 
-def _time_menu() -> None:
-    while True:
-        choice = _menu(
-            "Time & Timezone",
-            [
-                ("1", "Show current status"),
-                ("2", "Set timezone"),
-                ("3", "Set time"),
-                ("4", "Watchclock"),
-                ("5", "Back"),
-            ],
-        )
-        if choice in (None, "5"):
-            return
-        if choice == "1":
-            _run_with_status_message("Time status", time_status)
-        elif choice == "2":
-            tz = _run_with_status("Timezone", "Working...", lambda: current_timezone().stdout.strip())
-            timezones = _run_with_status(
-                "Timezone",
-                "Working...",
-                lambda: subprocess.check_output(["timedatectl", "list-timezones"], text=True).splitlines(),
-            )
-            items = [(zone, "") for zone in timezones]
-            selected = _menu("Set Time Zone", items, default=tz)
-            if selected:
-                _run_with_status_message("Timezone", lambda: set_timezone(selected), empty="Timezone updated.")
-        elif choice == "3":
-            now = datetime.now()
-            date_value = _calendar("Set Date", f"Current date: {now:%B %d, %Y}", now.day, now.month, now.year)
-            if not date_value:
-                continue
-            time_value = _timebox("Set Time", f"Current time: {now:%H:%M:%S}", now.hour, now.minute, now.second)
-            if not time_value:
-                continue
-            day, month, year = date_value.split("/")
-            timespec = f"{year}-{month}-{day} {time_value}"
-            _run_with_status_message("System time", lambda: set_time(timespec), empty="Time updated.")
-        elif choice == "4":
-            _watchclock_menu()
-
-
 def _software_action_dialog(title: str, result) -> None:
     body = ""
     if result.user_message:
@@ -2019,11 +1924,6 @@ def _wifi_mesh_menu() -> None:
             _run_cli_output(["services", service, action], f"{service} {action}")
 
 
-def _watchclock_menu() -> None:
-    if _yesno("Watchclock", "Run watchclock loop now?"):
-        _run_with_status_message("Watchclock", run_watchclock)
-
-
 def _install_wizard() -> None:
     if not _yesno(
         "Install Wizard",
@@ -2031,7 +1931,6 @@ def _install_wizard() -> None:
         "The wizard takes several minutes to complete and will overwrite some current settings.\n\nProceed?",
     ):
         return
-    _time_menu()
     hostname = _inputbox("Hostname", "Enter hostname:", os.uname().nodename)
     if hostname:
         _run_cli(["networking", "hostname", "set", "--name", hostname])
@@ -2135,16 +2034,15 @@ def main(wizard: bool = False) -> int:
                 [
                     ("1", "Meshtastic"),
                     ("2", "Networking"),
-                    ("3", "Time & Timezone"),
-                    ("4", "Software Manager"),
-                    ("5", "System Utilities"),
-                    ("6", "System Actions"),
-                    ("7", "Install Wizard"),
-                    ("8", "Help / About"),
-                    ("9", "Exit"),
+                    ("3", "Software Manager"),
+                    ("4", "System Utilities"),
+                    ("5", "System Actions"),
+                    ("6", "Install Wizard"),
+                    ("7", "Help / About"),
+                    ("8", "Exit"),
                 ],
             )
-            if choice in (None, "9"):
+            if choice in (None, "8"):
                 _print_exiting_notice()
                 return 0
             if choice == "1":
@@ -2168,16 +2066,14 @@ def main(wizard: bool = False) -> int:
             elif choice == "2":
                 _networking_menu()
             elif choice == "3":
-                _time_menu()
-            elif choice == "4":
                 _software_menu()
-            elif choice == "5":
+            elif choice == "4":
                 _utilities_menu()
-            elif choice == "6":
+            elif choice == "5":
                 _system_menu()
-            elif choice == "7":
+            elif choice == "6":
                 _install_wizard()
-            elif choice == "8":
+            elif choice == "7":
                 _help_menu()
     finally:
         close_handler()
