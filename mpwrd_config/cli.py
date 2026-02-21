@@ -188,7 +188,11 @@ def _parse_args() -> argparse.Namespace:
 
     meshtastic_sub.add_parser("radio", help="Show radio selection.")
     radio_set = meshtastic_sub.add_parser("set-radio", help="Set radio selection.")
-    radio_set.add_argument("--model", required=True)
+    radio_set.add_argument(
+        "--model",
+        choices=["lr1121_tcxo", "sx1262_tcxo", "sx1262_xtal", "lora-meshstick-1262", "sim", "none"],
+        required=True,
+    )
     meshtastic_sub.add_parser("mac-source", help="Show MAC address source.")
     mac_set = meshtastic_sub.add_parser("set-mac-source", help="Set MAC address source.")
     mac_set.add_argument("--source", required=True)

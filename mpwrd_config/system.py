@@ -12,9 +12,12 @@ from typing import Iterable, Sequence
 
 WPA_SUPPLICANT_PATH = Path("/etc/wpa_supplicant/wpa_supplicant.conf")
 WIFI_STATE_PATH = Path("/etc/wifi_state.txt")
+NETPLAN_WIFI_PATH = Path("/etc/netplan/90-mpwrd-config.yaml")
 HOSTS_PATH = Path("/etc/hosts")
 TTYD_KEY_PATH = Path("/etc/ssl/private/ttyd.key")
 TTYD_CERT_PATH = Path("/etc/ssl/certs/ttyd.crt")
+WEB_KEY_PATH = Path("/etc/ssl/private/mpwrd-config-web.key")
+WEB_CERT_PATH = Path("/etc/ssl/certs/mpwrd-config-web.crt")
 
 
 @dataclass
@@ -181,23 +184,86 @@ def _regenerate_ttyd_cert(hostname: str) -> CommandResult | None:
     return result
 
 
+def _regenerate_web_cert(hostname: str) -> CommandResult | None:
+    if shutil.which("openssl") is None:
+        return None
+    WEB_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    WEB_CERT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    result = _run(
+        [
+            "openssl",
+            "req",
+            "-new",
+            "-newkey",
+            "rsa:4096",
+            "-days",
+            "3650",
+            "-nodes",
+            "-x509",
+            "-keyout",
+            str(WEB_KEY_PATH),
+            "-out",
+            str(WEB_CERT_PATH),
+            "-subj",
+            f"/CN={hostname}",
+            "-addext",
+            f"subjectAltName=DNS:{hostname}",
+        ]
+    )
+    if result.returncode == 0:
+        try:
+            os.chmod(WEB_KEY_PATH, 0o600)
+            os.chmod(WEB_CERT_PATH, 0o644)
+        except PermissionError:
+            pass
+    return result
+
+
+def ensure_web_ssl() -> CommandResult:
+    hostname = socket.gethostname()
+    if WEB_KEY_PATH.exists() and WEB_CERT_PATH.exists():
+        return CommandResult(returncode=0, stdout="Web UI SSL cert already present.")
+    result = _regenerate_web_cert(hostname)
+    if result is None:
+        return CommandResult(returncode=1, stdout="openssl not found")
+    return result
+
+
 def set_hostname(hostname: str) -> CommandResult:
     old_hostname = socket.gethostname()
     result = _run(["hostnamectl", "set-hostname", hostname])
     _update_hosts(old_hostname, hostname)
     _run(["systemctl", "restart", "avahi-daemon"])
     _regenerate_ttyd_cert(hostname)
+    _regenerate_web_cert(hostname)
     message = result.stdout.strip() or f"Hostname set to {hostname}."
     return CommandResult(returncode=result.returncode, stdout=message)
 
 
-def set_wifi_credentials(
-    ssid: str,
-    psk: str,
-    country: str | None,
-    apply: bool = True,
-    interface: str | None = None,
-) -> CommandResult:
+def _service_is_active(service: str) -> bool:
+    return _run(["systemctl", "is-active", "--quiet", service]).returncode == 0
+
+
+def _detect_network_backend() -> str:
+    has_netplan = Path("/etc/netplan").exists() and shutil.which("netplan") is not None
+    has_nm = shutil.which("nmcli") is not None
+    if has_netplan and _service_is_active("systemd-networkd"):
+        return "netplan"
+    if has_nm and _service_is_active("NetworkManager"):
+        return "networkmanager"
+    if has_netplan:
+        return "netplan"
+    if has_nm:
+        return "networkmanager"
+    return "legacy"
+
+
+def _yaml_quote(value: str) -> str:
+    sanitized = value.replace("\r", " ").replace("\n", " ")
+    return "'" + sanitized.replace("'", "''") + "'"
+
+
+def _write_wpa_supplicant_config(ssid: str, psk: str, country: str | None) -> None:
     content = _read_text(WPA_SUPPLICANT_PATH)
     if not content:
         content = "ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\nupdate_config=1\n\n"
@@ -217,30 +283,167 @@ def set_wifi_credentials(
         content = re.sub(r'^\s*ssid=".*"$', f'    ssid="{ssid}"', content, flags=re.MULTILINE)
         content = re.sub(r'^\s*psk=".*"$', f'    psk="{psk}"', content, flags=re.MULTILINE)
     _write_text(WPA_SUPPLICANT_PATH, content)
+
+
+def _write_netplan_wifi_config(interface: str, ssid: str, psk: str) -> CommandResult:
+    iface = _yaml_quote(interface)
+    ssid_key = _yaml_quote(ssid)
+    psk_value = _yaml_quote(psk)
+    content = (
+        "network:\n"
+        "  version: 2\n"
+        "  renderer: networkd\n"
+        "  wifis:\n"
+        f"    {iface}:\n"
+        "      optional: true\n"
+        "      dhcp4: true\n"
+        "      access-points:\n"
+        f"        {ssid_key}:\n"
+        f"          password: {psk_value}\n"
+    )
+    _write_text(NETPLAN_WIFI_PATH, content)
+    return CommandResult(returncode=0, stdout=f"Netplan Wi-Fi config updated: {NETPLAN_WIFI_PATH}")
+
+
+def _nm_profile_name(interface: str) -> str:
+    return f"mpwrd-config-{interface}"
+
+
+def _configure_networkmanager_wifi(interface: str, ssid: str, psk: str) -> CommandResult:
+    profile = _nm_profile_name(interface)
+    exists = _run(["nmcli", "-g", "NAME", "connection", "show", profile])
+    if exists.returncode != 0:
+        created = _run(["nmcli", "connection", "add", "type", "wifi", "ifname", interface, "con-name", profile, "ssid", ssid])
+        if created.returncode != 0:
+            return created
+    modify_cmd = [
+        "nmcli",
+        "connection",
+        "modify",
+        profile,
+        "connection.interface-name",
+        interface,
+        "802-11-wireless.ssid",
+        ssid,
+    ]
+    if psk:
+        modify_cmd.extend(
+            [
+                "802-11-wireless-security.key-mgmt",
+                "wpa-psk",
+                "802-11-wireless-security.psk",
+                psk,
+            ]
+        )
+    else:
+        modify_cmd.extend(["802-11-wireless-security.key-mgmt", "none", "802-11-wireless-security.psk", ""])
+    modified = _run(modify_cmd)
+    if modified.returncode != 0:
+        return modified
+    return CommandResult(returncode=0, stdout=f"NetworkManager profile updated: {profile}")
+
+
+def _wifi_state_from_nmcli(interface: str) -> str | None:
+    status = _run(["nmcli", "-t", "-f", "DEVICE,STATE", "device", "status"])
+    if status.returncode != 0:
+        return None
+    for line in status.stdout.splitlines():
+        if ":" not in line:
+            continue
+        device, state = line.split(":", 1)
+        if device != interface:
+            continue
+        state = state.strip().lower()
+        if state in {"connected", "connecting"} or state.startswith("connected"):
+            return "up"
+        return "down"
+    return None
+
+
+def _current_wifi_state(interface: str, backend: str) -> str:
+    if backend == "networkmanager":
+        nm_state = _wifi_state_from_nmcli(interface)
+        if nm_state in {"up", "down"}:
+            return nm_state
+    status = _run(["ip", "link", "show", interface])
+    return "up" if "state UP" in status.stdout else "down"
+
+
+def _connected_wifi_info(interface: str, backend: str) -> tuple[str, str]:
+    if backend == "networkmanager":
+        scan = _run(["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL", "device", "wifi", "list", "ifname", interface])
+        if scan.returncode == 0:
+            for line in scan.stdout.splitlines():
+                match = re.match(r"^([^:]*):(.*):([^:]*)$", line)
+                if not match:
+                    continue
+                marker, ssid, signal = match.groups()
+                if marker.strip() != "*":
+                    continue
+                return ssid.strip() or "none", f"{signal.strip() or 'unknown'}%"
+    ssid = "none"
+    signal = "unknown"
+    if shutil.which("iw"):
+        info = _run(["iw", "dev", interface, "link"]).stdout
+        if "Not connected" not in info:
+            for line in info.splitlines():
+                if line.strip().startswith("SSID:"):
+                    ssid = line.split("SSID:", 1)[1].strip() or "none"
+                if line.strip().startswith("signal:"):
+                    signal = line.split("signal:", 1)[1].strip()
+    elif shutil.which("iwconfig"):
+        info = _run(["iwconfig", interface]).stdout
+        ssid_match = re.search(r'ESSID:\"([^\"]*)\"', info)
+        if ssid_match:
+            ssid = ssid_match.group(1) or "none"
+        signal_match = re.search(r"Signal level=([^ ]+)", info)
+        if signal_match:
+            signal = signal_match.group(1)
+    return ssid, signal
+
+
+def set_wifi_credentials(
+    ssid: str,
+    psk: str,
+    country: str | None,
+    apply: bool = True,
+    interface: str | None = None,
+) -> CommandResult:
+    _write_wpa_supplicant_config(ssid, psk, country)
     messages = ["Wi-Fi credentials updated."]
     returncode = 0
+    backend = _detect_network_backend()
+    iface: str | None = None
+    iface_error: str | None = None
+    if backend in {"netplan", "networkmanager"} or apply:
+        iface, iface_error = _resolve_wifi_interface(interface)
+        if iface_error:
+            messages.append(iface_error)
+            if apply:
+                return CommandResult(returncode=1, stdout="\n".join(line for line in messages if line))
+    if backend == "netplan" and iface:
+        netplan_result = _write_netplan_wifi_config(iface, ssid, psk)
+        if netplan_result.stdout.strip():
+            messages.append(netplan_result.stdout.strip())
+        returncode = max(returncode, netplan_result.returncode)
+    elif backend == "networkmanager" and iface:
+        nm_result = _configure_networkmanager_wifi(iface, ssid, psk)
+        if nm_result.stdout.strip():
+            messages.append(nm_result.stdout.strip())
+        returncode = max(returncode, nm_result.returncode)
+        if nm_result.returncode != 0:
+            return CommandResult(returncode=returncode, stdout="\n".join(line for line in messages if line))
     if apply:
-        state_result = wifi_state("up", interface=interface)
+        state_result = wifi_state("up", interface=iface or interface)
         returncode = max(returncode, state_result.returncode)
         if state_result.stdout.strip():
             messages.append(state_result.stdout.strip())
-        iface, error = _resolve_wifi_interface(interface)
-        if error:
-            messages.append(error)
-            return CommandResult(returncode=1, stdout="\n".join(line for line in messages if line))
-        if iface and shutil.which("wpa_cli"):
+        if backend == "legacy" and iface and shutil.which("wpa_cli"):
             reconfig = _run(["wpa_cli", "-i", iface, "reconfigure"])
             if reconfig.stdout.strip():
                 messages.append(reconfig.stdout.strip())
             returncode = max(returncode, reconfig.returncode)
     return CommandResult(returncode=returncode, stdout="\n".join(line for line in messages if line))
-
-
-def _read_wifi_state() -> str | None:
-    if not WIFI_STATE_PATH.exists():
-        return None
-    state = WIFI_STATE_PATH.read_text(encoding="utf-8").strip()
-    return state if state in {"up", "down"} else None
 
 
 def _write_wifi_state(state: str) -> None:
@@ -250,11 +453,8 @@ def _write_wifi_state(state: str) -> None:
 
 
 def _ensure_wifi_state(interface: str) -> str:
-    state = _read_wifi_state()
-    if state:
-        return state
-    status = _run(["ip", "link", "show", interface])
-    state = "up" if "state UP" in status.stdout else "down"
+    backend = _detect_network_backend()
+    state = _current_wifi_state(interface, backend)
     _write_wifi_state(state)
     return state
 
@@ -265,7 +465,23 @@ def wifi_state(state: str, interface: str | None = None) -> CommandResult:
     iface, error = _resolve_wifi_interface(interface)
     if error:
         return CommandResult(returncode=1, stdout=error)
-    result = _run(["ip", "link", "set", iface, state])
+    backend = _detect_network_backend()
+    if backend == "networkmanager":
+        if state == "up":
+            result = _run(["nmcli", "device", "connect", iface])
+        else:
+            result = _run(["nmcli", "device", "disconnect", iface])
+    elif backend == "netplan":
+        result = _run(["ip", "link", "set", iface, state])
+        if state == "up" and shutil.which("netplan"):
+            applied = _run(["netplan", "apply"])
+            if applied.returncode != 0:
+                return applied
+            if applied.stdout.strip():
+                combined = "\n".join(part for part in (result.stdout.strip(), applied.stdout.strip()) if part)
+                result = CommandResult(returncode=result.returncode, stdout=combined)
+    else:
+        result = _run(["ip", "link", "set", iface, state])
     if result.returncode == 0:
         _write_wifi_state(state)
         if not result.stdout.strip():
@@ -283,6 +499,12 @@ def wifi_toggle(interface: str | None = None) -> CommandResult:
 
 
 def wifi_restart(interface: str | None = None) -> CommandResult:
+    backend = _detect_network_backend()
+    if backend in {"networkmanager", "netplan"}:
+        down = wifi_state("down", interface=interface)
+        up = wifi_state("up", interface=interface)
+        output = "\n".join(line for line in (down.stdout.strip(), up.stdout.strip()) if line)
+        return CommandResult(returncode=max(down.returncode, up.returncode), stdout=output or "Done.")
     result_lines = []
     returncode = 0
     state_result = wifi_state("up", interface=interface)
@@ -325,9 +547,9 @@ def wifi_status(interface: str | None = None) -> CommandResult:
             stdout=f"Wi-Fi status:{error}\n\n" + "\n".join(config_lines),
         )
 
-    state = _read_wifi_state() or ("up" if "state UP" in _run(["ip", "link", "show", iface]).stdout else "down")
-    if not _read_wifi_state():
-        _write_wifi_state(state)
+    backend = _detect_network_backend()
+    state = _current_wifi_state(iface, backend)
+    _write_wifi_state(state)
     if state != "up":
         return CommandResult(
             returncode=0,
@@ -336,24 +558,7 @@ def wifi_status(interface: str | None = None) -> CommandResult:
             + "\n".join(config_lines),
         )
 
-    ssid = "none"
-    signal = "unknown"
-    if shutil.which("iw"):
-        info = _run(["iw", "dev", iface, "link"]).stdout
-        if "Not connected" not in info:
-            for line in info.splitlines():
-                if line.strip().startswith("SSID:"):
-                    ssid = line.split("SSID:", 1)[1].strip() or "none"
-                if line.strip().startswith("signal:"):
-                    signal = line.split("signal:", 1)[1].strip()
-    elif shutil.which("iwconfig"):
-        info = _run(["iwconfig", iface]).stdout
-        ssid_match = re.search(r'ESSID:\"([^\"]*)\"', info)
-        if ssid_match:
-            ssid = ssid_match.group(1) or "none"
-        signal_match = re.search(r"Signal level=([^ ]+)", info)
-        if signal_match:
-            signal = signal_match.group(1)
+    ssid, signal = _connected_wifi_info(iface, backend)
 
     ip_addr = ""
     ip_result = _run(["ip", "-4", "addr", "show", "dev", iface])
@@ -437,14 +642,16 @@ def ip_addresses() -> CommandResult:
 
 
 def test_internet(targets: Iterable[str] = ("1.1.1.1", "8.8.8.8")) -> CommandResult:
+    probe_targets = tuple(targets)
     success = 0
     total = 0
     errors: list[str] = []
     ping_available = shutil.which("ping") is not None
     if ping_available:
-        for target in targets:
-            result = _run(["ping", "-c", "5", "-W", "1", target])
-            total += 5
+        for target in probe_targets:
+            # Keep diagnostics responsive: one quick probe per target.
+            result = _run(["ping", "-c", "1", "-W", "1", target])
+            total += 1
             if result.returncode == 127:
                 errors.append(result.stdout.strip())
                 continue
@@ -460,9 +667,9 @@ def test_internet(targets: Iterable[str] = ("1.1.1.1", "8.8.8.8")) -> CommandRes
     http_url = f"http://{dns_host}/generate_204"
     http_ok = False
     if shutil.which("curl"):
-        http_ok = _run(["curl", "-fsS", "--max-time", "5", http_url]).returncode == 0
+        http_ok = _run(["curl", "-fsS", "--connect-timeout", "1", "--max-time", "2", http_url]).returncode == 0
     elif shutil.which("wget"):
-        http_ok = _run(["wget", "-q", "--timeout=5", "--spider", http_url]).returncode == 0
+        http_ok = _run(["wget", "-q", "--timeout=2", "--spider", http_url]).returncode == 0
 
     ping_ok = success > 0
     status_lines = [
@@ -472,7 +679,7 @@ def test_internet(targets: Iterable[str] = ("1.1.1.1", "8.8.8.8")) -> CommandRes
     ]
 
     if http_ok or (ping_ok and dns_ok):
-        target_list = ", ".join(targets)
+        target_list = ", ".join(probe_targets)
         summary = (
             "Internet connection is up.\n\n"
             f"Pinged {target_list}.\n"

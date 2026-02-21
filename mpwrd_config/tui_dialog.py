@@ -14,6 +14,7 @@ from typing import Any, Callable, TypeVar
 from InquirerPy import get_style, inquirer
 from prompt_toolkit.application import Application
 from prompt_toolkit.filters import has_focus
+from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.key_binding.bindings.focus import focus_next, focus_previous
 from prompt_toolkit.key_binding.defaults import load_key_bindings
@@ -22,6 +23,21 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Button, Dialog, RadioList, TextArea
 
 DEFAULT_KEY_BINDINGS = load_key_bindings()
+
+
+class _QuickExit(Exception):
+    """Raised to terminate the TUI quickly from global Ctrl-C."""
+
+
+def _quick_exit(event=None) -> None:
+    if event and getattr(event, "app", None):
+        event.app.exit(exception=_QuickExit())
+        return
+    raise _QuickExit()
+
+
+GLOBAL_KEY_BINDINGS = KeyBindings()
+GLOBAL_KEY_BINDINGS.add("c-c")(_quick_exit)
 
 
 def _clear_screen() -> None:
@@ -44,9 +60,9 @@ APP_STYLE = get_style(
         "instruction": "#9ca3af",
         "long_instruction": "#9ca3af",
         "separator": "#6b7280",
-        "frame": "bold ansigreen",
-        "frame.label": "bold ansigreen",
-        "fuzzy_border": "#22c55e",
+        "frame": "bold #39ff14",
+        "frame.label": "bold #ffffff",
+        "fuzzy_border": "#39ff14",
     },
     style_override=False,
 )
@@ -60,7 +76,7 @@ FUZZY_STYLE = get_style(
         "marker": "#22c55e",
         "fuzzy_prompt": "#e5e7eb",
         "fuzzy_info": "#9ca3af",
-        "fuzzy_border": "#22c55e",
+        "fuzzy_border": "#39ff14",
         "fuzzy_match": "#22c55e",
         "": "bg:#000000 #e5e7eb",
     },
@@ -73,11 +89,14 @@ DIALOG_STYLE = Style.from_dict(
         "": "bg:#000000 #22c55e",
         "dialog": "bg:#000000 #22c55e",
         "dialog.body": "bg:#000000 #22c55e",
-        "dialog frame.border": "#22c55e",
-        "dialog frame.label": "bold #22c55e",
+        "dialog frame.border": "#39ff14",
+        "dialog frame.label": "bold #ffffff",
         "text-area": "bg:#000000 #22c55e",
         "button": "bg:#0b0f0d #22c55e",
         "button.focused": "bg:#22c55e #000000",
+        "scrollbar.background": "#111827",
+        "scrollbar.button": "bg:#22c55e",
+        "scrollbar.arrow": "#22c55e",
     }
 )
 
@@ -86,19 +105,26 @@ MENU_STYLE = Style.from_dict(
         "": "bg:#000000 #e5e7eb",
         "dialog": "bg:#000000 #e5e7eb",
         "dialog.body": "bg:#000000 #e5e7eb",
-        "dialog frame.border": "#22c55e",
-        "dialog frame.label": "bold #e5e7eb",
+        "dialog frame.border": "#39ff14",
+        "dialog frame.label": "bold #ffffff",
         "radio-list": "bg:#000000 #e5e7eb",
         "radio": "#e5e7eb",
         "radio-selected": "bold #22c55e",
         "radio-checked": "bold #22c55e",
         "radio-number": "#9ca3af",
         "scrollbar.background": "#111827",
-        "scrollbar.button": "#22c55e",
+        "scrollbar.button": "bg:#22c55e",
         "scrollbar.arrow": "#22c55e",
         "button": "bg:#111827 #e5e7eb",
         "button.focused": "bg:#22c55e #000000",
     }
+)
+
+MAIN_MENU_TITLE = FormattedText(
+    [
+        ("fg:#39ff14 bold", "m"),
+        ("fg:#ffffff bold", "PWRD-config"),
+    ]
 )
 
 from mpwrd_config.core import DEFAULT_CONFIG_PATH, load_config
@@ -172,7 +198,6 @@ from mpwrd_config.system_utils import (
 )
 from mpwrd_config.system import list_wifi_interfaces, list_ethernet_interfaces
 from mpwrd_config.time_config import current_timezone, set_time, set_timezone, status as time_status
-from mpwrd_config.watchclock import run_watchclock
 from mpwrd_config.wifi_mesh import sync_once as wifi_mesh_sync
 
 T = TypeVar("T")
@@ -205,8 +230,8 @@ def _message(title: str, body: str) -> None:
     kb.add("enter")(_close)
     kb.add("left")(_close)
     app = Application(
-        layout=Layout(dialog, focused_element=ok_button),
-        key_bindings=merge_key_bindings([load_key_bindings(), kb]),
+        layout=Layout(dialog, focused_element=text_area),
+        key_bindings=merge_key_bindings([GLOBAL_KEY_BINDINGS, load_key_bindings(), kb]),
         mouse_support=False,
         style=DIALOG_STYLE,
         full_screen=True,
@@ -274,7 +299,7 @@ def _run_with_status(title: str, body: str, action: Callable[[], T]) -> T:
 
     app = Application(
         layout=Layout(dialog),
-        key_bindings=merge_key_bindings([DEFAULT_KEY_BINDINGS, kb]),
+        key_bindings=merge_key_bindings([GLOBAL_KEY_BINDINGS, DEFAULT_KEY_BINDINGS, kb]),
         mouse_support=False,
         style=DIALOG_STYLE,
         full_screen=True,
@@ -384,7 +409,7 @@ def _meshtastic_connection_dialog(message: str) -> str:
     kb.add("r")(_pick_reconnect)
     app = Application(
         layout=Layout(dialog, focused_element=reconnect_button),
-        key_bindings=merge_key_bindings([DEFAULT_KEY_BINDINGS, kb]),
+        key_bindings=merge_key_bindings([GLOBAL_KEY_BINDINGS, DEFAULT_KEY_BINDINGS, kb]),
         mouse_support=False,
         style=DIALOG_STYLE,
         full_screen=True,
@@ -468,7 +493,7 @@ class _PersistentMenuDialog:
         kb.add(" ")(self._accept)
         self._app = Application(
             layout=Layout(self._dialog, focused_element=self._radio),
-            key_bindings=merge_key_bindings([DEFAULT_KEY_BINDINGS, kb]),
+            key_bindings=merge_key_bindings([GLOBAL_KEY_BINDINGS, DEFAULT_KEY_BINDINGS, kb]),
             mouse_support=False,
             style=MENU_STYLE,
             full_screen=True,
@@ -523,7 +548,7 @@ def _menu(title: str, items: list[tuple[str, str]], default: str | None = None) 
                 qmark="",
                 amark="",
                 mandatory=False,
-                raise_keyboard_interrupt=False,
+                raise_keyboard_interrupt=True,
                 keybindings={
                     "answer": [{"key": "enter"}, {"key": "right"}, {"key": " "}],
                     "skip": [{"key": "escape"}, {"key": "left"}],
@@ -534,20 +559,24 @@ def _menu(title: str, items: list[tuple[str, str]], default: str | None = None) 
             return None
         return _menu_dialog().show(title, values, default=default)
     except (KeyboardInterrupt, EOFError):
-        return None
+        raise _QuickExit()
 
 
 def _yesno(title: str, body: str) -> bool:
     try:
         return bool(inquirer.confirm(message=f"{title}\n{body}", default=False, style=APP_STYLE).execute())
-    except (KeyboardInterrupt, EOFError):
+    except KeyboardInterrupt:
+        raise _QuickExit()
+    except EOFError:
         return False
 
 
 def _inputbox(title: str, body: str, default: str = "") -> str | None:
     try:
         value = inquirer.text(message=f"{title}\n{body}", default=default, style=APP_STYLE).execute()
-    except (KeyboardInterrupt, EOFError):
+    except KeyboardInterrupt:
+        raise _QuickExit()
+    except EOFError:
         return None
     if value is None:
         return None
@@ -588,7 +617,9 @@ def _calendar(title: str, body: str, day: int, month: int, year: int) -> str | N
             and _safe_date(text),
             style=APP_STYLE,
         ).execute()
-    except (KeyboardInterrupt, EOFError):
+    except KeyboardInterrupt:
+        raise _QuickExit()
+    except EOFError:
         return None
     if not value:
         return None
@@ -605,7 +636,9 @@ def _timebox(title: str, body: str, hour: int, minute: int, second: int) -> str 
             validate=lambda text: bool(re.fullmatch(r"\\d{2}:\\d{2}:\\d{2}", text)) and _safe_time(text),
             style=APP_STYLE,
         ).execute()
-    except (KeyboardInterrupt, EOFError):
+    except KeyboardInterrupt:
+        raise _QuickExit()
+    except EOFError:
         return None
     if not value:
         return None
@@ -657,17 +690,23 @@ def _wifi_form() -> tuple[str | None, str | None, str | None]:
     ssid_default, country_default = _read_wpa_defaults()
     try:
         ssid = inquirer.text(message="Wi-Fi SSID", default=ssid_default, style=APP_STYLE).execute()
-    except (KeyboardInterrupt, EOFError):
+    except KeyboardInterrupt:
+        raise _QuickExit()
+    except EOFError:
         return None, None, None
     if not ssid:
         return None, None, None
     try:
         psk = inquirer.secret(message="Wi-Fi Password", style=APP_STYLE).execute()
-    except (KeyboardInterrupt, EOFError):
+    except KeyboardInterrupt:
+        raise _QuickExit()
+    except EOFError:
         return None, None, None
     try:
         country = inquirer.text(message="Country Code (optional)", default=country_default, style=APP_STYLE).execute()
-    except (KeyboardInterrupt, EOFError):
+    except KeyboardInterrupt:
+        raise _QuickExit()
+    except EOFError:
         return None, None, None
     return str(ssid).strip(), str(psk or "").strip(), str(country or "").strip()
 
@@ -749,15 +788,13 @@ def _networking_menu() -> None:
     def _identity_menu() -> None:
         while True:
             action = _menu(
-                "Identity & Interfaces",
+                "Identity",
                 [
                     ("1", "Set hostname"),
-                    ("2", "Select Wi-Fi interface"),
-                    ("3", "Select ethernet interface"),
-                    ("4", "Back"),
+                    ("2", "Back"),
                 ],
             )
-            if action in (None, "4"):
+            if action in (None, "2"):
                 return
             if action == "1":
                 hostname = _inputbox("Hostname", "Enter new hostname:", os.uname().nodename)
@@ -765,9 +802,22 @@ def _networking_menu() -> None:
                     _run_cli(["networking", "hostname", "set", "--name", hostname])
                     _run_cli(["networking", "apply"])
                     _message("Hostname", f"mpwrd-config is now reachable at\n{hostname}.local")
-            elif action == "2":
+
+    def _interfaces_menu() -> None:
+        while True:
+            action = _menu(
+                "Interfaces",
+                [
+                    ("1", "Select Wi-Fi interface"),
+                    ("2", "Select ethernet interface"),
+                    ("3", "Back"),
+                ],
+            )
+            if action in (None, "3"):
+                return
+            if action == "1":
                 _select_interface("wifi", list_wifi_interfaces())
-            elif action == "3":
+            elif action == "2":
                 _select_interface("ethernet", list_ethernet_interfaces())
 
     def _wifi_settings_menu() -> None:
@@ -809,13 +859,6 @@ def _networking_menu() -> None:
                 elif _yesno("Restart Wi-Fi", "Wi-Fi will be restarted.\n\nProceed?"):
                     _run_cli_output(["networking", "wifi", "restart"], "Restart Wi-Fi")
 
-    def _network_services_menu() -> None:
-        _service_menu(
-            "Avahi-Daemon",
-            ["avahi-daemon"],
-            "The Avahi-Daemon service advertises mpwrd-config on the LAN.",
-        )
-
     def _diagnostics_menu() -> None:
         while True:
             action = _menu(
@@ -843,29 +886,29 @@ def _networking_menu() -> None:
         choice = _menu(
             "Networking",
             [
-                ("1", "Identity & Interfaces"),
-                ("2", "Wi-Fi Settings"),
-                ("3", "Wi-Fi Mesh Sync"),
-                ("4", "Networking Services"),
-                ("5", "Diagnostics"),
-                ("6", "Back"),
+                ("1", "Identity"),
+                ("2", "Interfaces"),
+                ("3", "Wi-Fi Settings"),
+                ("4", "Diagnostics"),
+                ("5", "Back"),
             ],
         )
-        if choice in (None, "6"):
+        if choice in (None, "5"):
             return
         if choice == "1":
             _identity_menu()
         elif choice == "2":
-            _wifi_settings_menu()
+            _interfaces_menu()
         elif choice == "3":
-            _wifi_mesh_menu()
+            _wifi_settings_menu()
         elif choice == "4":
-            _network_services_menu()
-        elif choice == "5":
             _diagnostics_menu()
 
 
-def _meshtastic_full_settings_menu(session: MeshtasticSession | None = None) -> None:
+def _meshtastic_full_settings_menu(
+    session: MeshtasticSession | None = None,
+    section: str = "all",
+) -> None:
     def _show(title: str, action: Callable[[], object]) -> None:
         result = _run_meshtastic_with_reconnect(session, title, action)
         if result is None:
@@ -887,43 +930,71 @@ def _meshtastic_full_settings_menu(session: MeshtasticSession | None = None) -> 
     manage_full_control_conflicts("stop")
     try:
         while True:
+            if section == "all":
+                choice = _menu(
+                    "Meshtastic Settings",
+                    [
+                        ("1", "Preferences"),
+                        ("2", "Channels"),
+                        ("3", "Back"),
+                    ],
+                )
+                if choice in (None, "3"):
+                    return
+                if choice == "1":
+                    _meshtastic_full_settings_menu(session=session, section="preferences")
+                elif choice == "2":
+                    _meshtastic_full_settings_menu(session=session, section="channels")
+                continue
+
+            if section == "preferences":
+                choice = _menu(
+                    "Meshtastic Preferences",
+                    [
+                        ("1", "Show preferences + modules"),
+                        ("2", "List preference fields"),
+                        ("3", "Get preference value"),
+                        ("4", "Set preference value"),
+                        ("5", "Back"),
+                    ],
+                )
+                if choice in (None, "5"):
+                    return
+                if choice == "1":
+                    _show("Meshtastic settings", lambda: meshtastic_config("settings", session=session))
+                elif choice == "2":
+                    _show("Preference fields", list_preference_fields)
+                elif choice == "3":
+                    field = _inputbox("Get preference", "Enter preference field (e.g. power.ls_secs):")
+                    if field:
+                        _show("Preference value", lambda: get_preference(field, session=session))
+                elif choice == "4":
+                    field = _inputbox("Set preference", "Enter preference field (e.g. power.ls_secs):")
+                    if field:
+                        value = _inputbox("Set preference", "Enter value:")
+                        if value is not None:
+                            _show("Set preference", lambda: set_preference(field, value, session=session))
+                continue
+
             choice = _menu(
-                "Meshtastic Settings",
+                "Meshtastic Channels",
                 [
-                    ("1", "Show preferences + modules"),
-                    ("2", "List preference fields"),
-                    ("3", "Get preference value"),
-                    ("4", "Set preference value"),
-                    ("5", "Show channels"),
-                    ("6", "Set channel field"),
-                    ("7", "Add channel"),
-                    ("8", "Delete channel"),
-                    ("9", "Enable channel"),
-                    ("10", "Disable channel"),
-                    ("11", "Set channels from URL"),
-                    ("12", "Add channels from URL"),
-                    ("13", "Back"),
+                    ("1", "Show channels"),
+                    ("2", "Set channel field"),
+                    ("3", "Add channel"),
+                    ("4", "Delete channel"),
+                    ("5", "Enable channel"),
+                    ("6", "Disable channel"),
+                    ("7", "Set channels from URL"),
+                    ("8", "Add channels from URL"),
+                    ("9", "Back"),
                 ],
             )
-            if choice in (None, "13"):
+            if choice in (None, "9"):
                 return
             if choice == "1":
-                _show("Meshtastic settings", lambda: meshtastic_config("settings", session=session))
-            elif choice == "2":
-                _show("Preference fields", list_preference_fields)
-            elif choice == "3":
-                field = _inputbox("Get preference", "Enter preference field (e.g. power.ls_secs):")
-                if field:
-                    _show("Preference value", lambda: get_preference(field, session=session))
-            elif choice == "4":
-                field = _inputbox("Set preference", "Enter preference field (e.g. power.ls_secs):")
-                if field:
-                    value = _inputbox("Set preference", "Enter value:")
-                    if value is not None:
-                        _show("Set preference", lambda: set_preference(field, value, session=session))
-            elif choice == "5":
                 _show("Meshtastic channels", lambda: meshtastic_config("channels", session=session))
-            elif choice == "6":
+            elif choice == "2":
                 index = _prompt_index()
                 if index is None:
                     continue
@@ -932,27 +1003,27 @@ def _meshtastic_full_settings_menu(session: MeshtasticSession | None = None) -> 
                     value = _inputbox("Set channel field", "Enter value:")
                     if value is not None:
                         _show("Set channel", lambda: channel_set(index, field, value, session=session))
-            elif choice == "7":
+            elif choice == "3":
                 name = _inputbox("Add channel", "Enter channel name:")
                 if name:
                     _show("Add channel", lambda: channel_add(name, session=session))
-            elif choice == "8":
+            elif choice == "4":
                 index = _prompt_index()
                 if index is None:
                     continue
                 if _yesno("Delete channel", f"Delete channel {index}?"):
                     _show("Delete channel", lambda: channel_delete(index, session=session))
-            elif choice == "9":
+            elif choice == "5":
                 index = _prompt_index()
                 if index is None:
                     continue
                 _show("Enable channel", lambda: channel_enable(index, session=session))
-            elif choice == "10":
+            elif choice == "6":
                 index = _prompt_index()
                 if index is None:
                     continue
                 _show("Disable channel", lambda: channel_disable(index, session=session))
-            elif choice == "11":
+            elif choice == "7":
                 url = _inputbox("Set channels from URL", "Enter configuration URL:")
                 if url:
                     if _yesno(
@@ -960,7 +1031,7 @@ def _meshtastic_full_settings_menu(session: MeshtasticSession | None = None) -> 
                         "This will overwrite LoRa settings and channels.\n\nProceed?",
                     ):
                         _show("Set channels from URL", lambda: channel_set_url(url, session=session))
-            elif choice == "12":
+            elif choice == "8":
                 url = _inputbox("Add channels from URL", "Enter configuration URL:")
                 if url:
                     _show("Add channels from URL", lambda: channel_add_url(url, session=session))
@@ -989,11 +1060,11 @@ def _meshtastic_repo_menu() -> None:
             "Meshtastic Repo",
             [
                 ("1", "Show current repo"),
-                ("2", "Install/Update repo (choose channel)"),
-                ("3", "Use beta repo (install/update)"),
-                ("4", "Use alpha repo (install/update)"),
-                ("5", "Use daily repo (install/update)"),
-                ("6", "Upgrade meshtasticd"),
+                ("2", "Upgrade meshtasticd"),
+                ("3", "Install/Update repo (choose channel)"),
+                ("4", "Use beta repo (install/update)"),
+                ("5", "Use alpha repo (install/update)"),
+                ("6", "Use daily repo (install/update)"),
                 ("7", "Uninstall meshtasticd"),
                 ("8", "Back"),
             ],
@@ -1003,6 +1074,9 @@ def _meshtastic_repo_menu() -> None:
         if choice == "1":
             _show_repo("Meshtastic Repo", meshtastic_repo_status)
         elif choice == "2":
+            if _yesno("Upgrade", "Upgrade meshtasticd now?"):
+                _show_repo("Upgrade", lambda: meshtastic_upgrade(stream=True), "Done.", stream=True)
+        elif choice == "3":
             channel = _menu(
                 "Install/Update Repo",
                 [
@@ -1015,15 +1089,12 @@ def _meshtastic_repo_menu() -> None:
             if channel in (None, "back"):
                 continue
             _show_repo("Meshtastic Repo", lambda: set_meshtastic_repo(channel, stream=True), stream=True)
-        elif choice == "3":
-            _show_repo("Meshtastic Repo", lambda: set_meshtastic_repo("beta", stream=True), stream=True)
         elif choice == "4":
-            _show_repo("Meshtastic Repo", lambda: set_meshtastic_repo("alpha", stream=True), stream=True)
+            _show_repo("Meshtastic Repo", lambda: set_meshtastic_repo("beta", stream=True), stream=True)
         elif choice == "5":
-            _show_repo("Meshtastic Repo", lambda: set_meshtastic_repo("daily", stream=True), stream=True)
+            _show_repo("Meshtastic Repo", lambda: set_meshtastic_repo("alpha", stream=True), stream=True)
         elif choice == "6":
-            if _yesno("Upgrade", "Upgrade meshtasticd now?"):
-                _show_repo("Upgrade", lambda: meshtastic_upgrade(stream=True), "Done.", stream=True)
+            _show_repo("Meshtastic Repo", lambda: set_meshtastic_repo("daily", stream=True), stream=True)
         elif choice == "7":
             if _yesno("Uninstall", "Uninstall meshtasticd?"):
                 _show_repo("Uninstall", lambda: meshtastic_uninstall(stream=True), "Done.", stream=True)
@@ -1039,7 +1110,7 @@ def _meshtastic_menu(session: MeshtasticSession) -> None:
             return
         _message(title, result.stdout.strip() or empty)
 
-    def _service_menu() -> None:
+    def _meshtasticd_service_menu() -> None:
         while True:
             action = _menu(
                 "Meshtastic Service",
@@ -1071,25 +1142,53 @@ def _meshtastic_menu(session: MeshtasticSession) -> None:
             elif action == "7":
                 _mac_source_menu()
 
-    def _i2c_menu() -> None:
+    def _avahi_service_menu() -> None:
         while True:
             action = _menu(
-                "Meshtastic I2C",
+                "Avahi service",
                 [
-                    ("1", "Check I2C state"),
-                    ("2", "Enable I2C"),
-                    ("3", "Disable I2C"),
+                    ("1", "Status"),
+                    ("2", "Start"),
+                    ("3", "Stop"),
+                    ("4", "Restart"),
+                    ("5", "Enable"),
+                    ("6", "Disable"),
+                    ("7", "Back"),
+                ],
+            )
+            if action in (None, "7"):
+                return
+            action_map = {
+                "1": "status",
+                "2": "start",
+                "3": "stop",
+                "4": "restart",
+                "5": "enable",
+                "6": "disable",
+            }
+            action_name = action_map.get(action)
+            if action_name:
+                _run_cli_output(["services", "avahi-daemon", action_name], f"avahi-daemon {action_name}")
+
+    def _meshtastic_services_menu() -> None:
+        while True:
+            action = _menu(
+                "Meshtastic services",
+                [
+                    ("1", "meshtasticd service"),
+                    ("2", "avahi"),
+                    ("3", "Admin mesh client Wi-Fi toggle"),
                     ("4", "Back"),
                 ],
             )
             if action in (None, "4"):
                 return
             if action == "1":
-                _show_result("I2C status", lambda: i2c_state("check"))
+                _meshtasticd_service_menu()
             elif action == "2":
-                _show_result("I2C enable", lambda: i2c_state("enable"), "Done.")
+                _avahi_service_menu()
             elif action == "3":
-                _show_result("I2C disable", lambda: i2c_state("disable"), "Done.")
+                _wifi_mesh_menu()
 
     def _mac_source_menu() -> None:
         current = _run_with_status(
@@ -1179,17 +1278,17 @@ def _meshtastic_menu(session: MeshtasticSession) -> None:
             action = _menu(
                 "Meshtastic Overview",
                 [
-                    ("1", "Show node info"),
-                    ("2", "Show node summary"),
+                    ("1", "Show node summary"),
+                    ("2", "Show node info"),
                     ("3", "Back"),
                 ],
             )
             if action in (None, "3"):
                 return
             if action == "1":
-                _show_result("Meshtastic info", lambda: meshtastic_info(session=session))
-            elif action == "2":
                 _show_result("Meshtastic summary", lambda: meshtastic_summary(session=session))
+            elif action == "2":
+                _show_result("Meshtastic info", lambda: meshtastic_info(session=session))
 
     def _url_menu() -> None:
         while True:
@@ -1244,12 +1343,12 @@ def _meshtastic_menu(session: MeshtasticSession) -> None:
             [
                 ("1", "Meshtastic overview"),
                 ("2", "URL"),
-                ("3", "LoRa configuration"),
-                ("4", "Preferences & channels"),
-                ("5", "Keys & admin"),
-                ("6", "Meshtastic repo"),
-                ("7", "meshtasticd service"),
-                ("8", "I2C"),
+                ("3", "Channels"),
+                ("4", "LoRa configuration"),
+                ("5", "Preferences"),
+                ("6", "Keys & admin"),
+                ("7", "Meshtastic services"),
+                ("8", "Meshtastic repository"),
                 ("9", "Diagnostics"),
                 ("10", "Advanced"),
                 ("11", "Back"),
@@ -1262,17 +1361,17 @@ def _meshtastic_menu(session: MeshtasticSession) -> None:
         elif choice == "2":
             _url_menu()
         elif choice == "3":
-            _meshtastic_lora_menu(session=session)
+            _meshtastic_full_settings_menu(session=session, section="channels")
         elif choice == "4":
-            _meshtastic_full_settings_menu(session=session)
+            _meshtastic_lora_menu(session=session)
         elif choice == "5":
-            _keys_menu()
+            _meshtastic_full_settings_menu(session=session, section="preferences")
         elif choice == "6":
-            _meshtastic_repo_menu()
+            _keys_menu()
         elif choice == "7":
-            _service_menu()
+            _meshtastic_services_menu()
         elif choice == "8":
-            _i2c_menu()
+            _meshtastic_repo_menu()
         elif choice == "9":
             _diagnostics_menu()
         elif choice == "10":
@@ -1304,13 +1403,14 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
     def _run_lora(action: Callable[[], object]) -> object | None:
         return _run_meshtastic_with_reconnect(session, "LoRa settings", action)
 
+    current: dict[str, Any] = {}
     initial = _run_lora(lambda: lora_settings(session=session))
-    if initial is None:
-        return
-    result, current = initial
-    if result.returncode != 0:
-        _message("Meshtastic", result.stdout.strip() or "Unable to query Meshtastic.")
-        return
+    connected = False
+    if initial is not None:
+        result, discovered = initial
+        if result.returncode == 0:
+            current = discovered
+            connected = True
 
     def apply(settings: dict[str, str], title: str) -> None:
         nonlocal current
@@ -1338,7 +1438,8 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             ("sx1262_tcxo", "SX1262 TCXO (Ebyte e22-900m30s / Heltec ht-ra62 / Seeed wio-sx1262)"),
             ("sx1262_xtal", "SX1262 XTAL (Ebyte e80-900m22s / Waveshare / AI Thinker ra-01sh)"),
             ("lora-meshstick-1262", "LoRa Meshstick 1262 (USB)"),
-            ("none", "Simulated radio"),
+            ("sim", "Simulated radio (software)"),
+            ("none", "Auto-detect (no forced profile)"),
         ]
         model = _menu(
             "LoRa radio",
@@ -1350,6 +1451,27 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             if response is None:
                 return
             _message("LoRa radio", response.stdout.strip() or "Done.")
+
+    if not connected:
+        _message(
+            "LoRa settings",
+            "Meshtastic API is not connected.\n\n"
+            "You can still set the LoRa radio model from this menu.\n"
+            "Other LoRa settings require a live Meshtastic connection.",
+        )
+        while True:
+            choice = _menu(
+                "LoRa settings",
+                [
+                    ("1", "Set LoRa radio model"),
+                    ("2", "Back"),
+                ],
+            )
+            if choice in (None, "2"):
+                return
+            if choice == "1":
+                select_radio()
+        return
 
     def config_url_prompt() -> bool:
         nonlocal current
@@ -1378,30 +1500,29 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             [
                 ("1", "Wizard (set all)"),
                 ("2", "Set LoRa radio model"),
-                ("3", "Show radio selection"),
-                ("4", "Configure with URL"),
-                ("5", "Region"),
-                ("6", "Use modem preset"),
-                ("7", "Preset"),
-                ("8", "Bandwidth"),
-                ("9", "Spread factor"),
-                ("10", "Coding rate"),
-                ("11", "Frequency offset"),
-                ("12", "Hop limit"),
-                ("13", "Enable/disable TX"),
-                ("14", "TX power"),
-                ("15", "Frequency slot"),
-                ("16", "Override duty cycle"),
-                ("17", "SX126X RX boosted gain"),
-                ("18", "Override frequency"),
-                ("19", "Ignore MQTT"),
-                ("20", "OK to MQTT"),
-                ("21", "Show current LoRa settings"),
-                ("22", "Show config URL + QR"),
-                ("23", "Back"),
+                ("3", "Configure with URL"),
+                ("4", "Region"),
+                ("5", "Use modem preset"),
+                ("6", "Preset"),
+                ("7", "Bandwidth"),
+                ("8", "Spread factor"),
+                ("9", "Coding rate"),
+                ("10", "Frequency offset"),
+                ("11", "Hop limit"),
+                ("12", "Enable/disable TX"),
+                ("13", "TX power"),
+                ("14", "Frequency slot"),
+                ("15", "Override duty cycle"),
+                ("16", "SX126X RX boosted gain"),
+                ("17", "Override frequency"),
+                ("18", "Ignore MQTT"),
+                ("19", "OK to MQTT"),
+                ("20", "Show current LoRa settings"),
+                ("21", "Show config URL + QR"),
+                ("22", "Back"),
             ],
         )
-        if choice in (None, "23"):
+        if choice in (None, "22"):
             return
         if choice == "1":
             current_radio_value = _run_with_status(
@@ -1437,13 +1558,8 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
         elif choice == "2":
             select_radio()
         elif choice == "3":
-            response = _run_lora(current_radio)
-            if response is None:
-                continue
-            _message("Radio selection", response.stdout.strip() or "No output.")
-        elif choice == "4":
             config_url_prompt()
-        elif choice == "5":
+        elif choice == "4":
             regions = [
                 "UNSET",
                 "US",
@@ -1468,11 +1584,11 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             region = _menu("Region", [(value, value) for value in regions], default=str(current.get("lora_region") or "UNSET"))
             if region:
                 apply({"region": region}, "Region")
-        elif choice == "6":
+        elif choice == "5":
             value = _bool_prompt("Use modem preset", "Use preset?", str(current.get("lora_usePreset")))
             if value is not None:
                 apply({"use_preset": value}, "Use modem preset")
-        elif choice == "7":
+        elif choice == "6":
             presets = [
                 "LONG_FAST",
                 "LONG_SLOW",
@@ -1486,7 +1602,7 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             preset = _menu("Preset", [(value, value) for value in presets], default=str(current.get("lora_modemPreset")))
             if preset:
                 apply({"modem_preset": preset}, "Preset")
-        elif choice == "8":
+        elif choice == "7":
             bandwidth = _menu(
                 "Bandwidth",
                 [(value, value) for value in ["0", "31", "62", "125", "250", "500"]],
@@ -1494,7 +1610,7 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             )
             if bandwidth:
                 apply({"bandwidth": bandwidth}, "Bandwidth")
-        elif choice == "9":
+        elif choice == "8":
             spread = _menu(
                 "Spread factor",
                 [(value, value) for value in ["0", "7", "8", "9", "10", "11", "12"]],
@@ -1502,7 +1618,7 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             )
             if spread:
                 apply({"spread_factor": spread}, "Spread factor")
-        elif choice == "10":
+        elif choice == "9":
             coding = _menu(
                 "Coding rate",
                 [(value, value) for value in ["0", "5", "6", "7", "8"]],
@@ -1510,7 +1626,7 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             )
             if coding:
                 apply({"coding_rate": coding}, "Coding rate")
-        elif choice == "11":
+        elif choice == "10":
             value = _input_with_validation(
                 "Frequency offset",
                 "Frequency offset (0-1000000):",
@@ -1520,7 +1636,7 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             )
             if value:
                 apply({"frequency_offset": value}, "Frequency offset")
-        elif choice == "12":
+        elif choice == "11":
             value = _input_with_validation(
                 "Hop limit",
                 "Hop limit (0-7):",
@@ -1530,11 +1646,11 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             )
             if value:
                 apply({"hop_limit": value}, "Hop limit")
-        elif choice == "13":
+        elif choice == "12":
             value = _bool_prompt("TX enabled", "Enable TX?", str(current.get("lora_txEnabled")))
             if value is not None:
                 apply({"tx_enabled": value}, "TX enabled")
-        elif choice == "14":
+        elif choice == "13":
             value = _input_with_validation(
                 "TX power",
                 "TX power (0-30):",
@@ -1544,7 +1660,7 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             )
             if value:
                 apply({"tx_power": value}, "TX power")
-        elif choice == "15":
+        elif choice == "14":
             value = _input_with_validation(
                 "Frequency slot",
                 "Frequency slot (0+):",
@@ -1554,11 +1670,11 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             )
             if value:
                 apply({"channel_num": value}, "Frequency slot")
-        elif choice == "16":
+        elif choice == "15":
             value = _bool_prompt("Override duty cycle", "Override duty cycle?", str(current.get("lora_overrideDutyCycle")))
             if value is not None:
                 apply({"override_duty_cycle": value}, "Override duty cycle")
-        elif choice == "17":
+        elif choice == "16":
             value = _bool_prompt(
                 "SX126X RX boosted gain",
                 "Enable SX126X RX boosted gain?",
@@ -1566,7 +1682,7 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             )
             if value is not None:
                 apply({"sx126x_rx_boosted_gain": value}, "SX126X RX boosted gain")
-        elif choice == "18":
+        elif choice == "17":
             value = _input_with_validation(
                 "Override frequency",
                 "Override frequency (MHz, 0+):",
@@ -1576,15 +1692,15 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             )
             if value:
                 apply({"override_frequency": value}, "Override frequency")
-        elif choice == "19":
+        elif choice == "18":
             value = _bool_prompt("Ignore MQTT", "Ignore MQTT?", str(current.get("lora_ignoreMqtt")))
             if value is not None:
                 apply({"ignore_mqtt": value}, "Ignore MQTT")
-        elif choice == "20":
+        elif choice == "19":
             value = _bool_prompt("OK to MQTT", "OK to MQTT?", str(current.get("lora_configOkToMqtt")))
             if value is not None:
                 apply({"config_ok_to_mqtt": value}, "OK to MQTT")
-        elif choice == "21":
+        elif choice == "20":
             payload = _run_lora(lambda: lora_settings(session=session))
             if payload is None:
                 continue
@@ -1594,7 +1710,7 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             else:
                 body = "\n".join(f"{key}:{value}" for key, value in settings.items())
                 _message("LoRa settings", body or "No output.")
-        elif choice == "22":
+        elif choice == "21":
             result = _run_lora(lambda: config_qr(session=session))
             if result is None:
                 continue
@@ -1735,7 +1851,7 @@ def _time_menu() -> None:
                 ("1", "Show current status"),
                 ("2", "Set timezone"),
                 ("3", "Set time"),
-                ("4", "Watchclock"),
+                ("4", "Watchclock service"),
                 ("5", "Back"),
             ],
         )
@@ -1869,41 +1985,46 @@ def _software_menu() -> None:
                 _software_action_dialog("Run", result)
 
 
+def _meshtastic_i2c_menu() -> None:
+    while True:
+        action = _menu(
+            "Meshtastic I2C",
+            [
+                ("1", "Check I2C state"),
+                ("2", "Enable I2C"),
+                ("3", "Disable I2C"),
+                ("4", "Back"),
+            ],
+        )
+        if action in (None, "4"):
+            return
+        if action == "1":
+            _run_with_status_message("I2C status", lambda: i2c_state("check"))
+        elif action == "2":
+            _run_with_status_message("I2C enable", lambda: i2c_state("enable"), empty="Done.")
+        elif action == "3":
+            _run_with_status_message("I2C disable", lambda: i2c_state("disable"), empty="Done.")
+
+
 def _utilities_menu() -> None:
     while True:
         choice = _menu(
             "System Utilities",
             [
-                ("1", "ACT LED"),
+                ("1", "System info"),
                 ("2", "Logging"),
-                ("3", "ttyd service"),
-                ("4", "Regenerate SSH keys"),
-                ("5", "System info"),
-                ("6", "Process viewer/manager"),
-                ("7", "Back"),
+                ("3", "Activity LED"),
+                ("4", "Meshtastic I2C"),
+                ("5", "ttyd service"),
+                ("6", "Regenerate SSH keys"),
+                ("7", "Process viewer/manager"),
+                ("8", "Time & Timezone"),
+                ("9", "Back"),
             ],
         )
-        if choice in (None, "7"):
+        if choice in (None, "9"):
             return
         if choice == "1":
-            state = _menu("ACT LED", [("enable", "Enable"), ("disable", "Disable"), ("check", "Check")])
-            if state:
-                _run_with_status_message("ACT LED", lambda: act_led(state))
-        elif choice == "2":
-            state = _menu("Logging", [("enable", "Enable"), ("disable", "Disable"), ("check", "Check")])
-            if state:
-                _run_with_status_message("Logging", lambda: logging_state(state))
-        elif choice == "3":
-            action = _menu(
-                "ttyd",
-                [("enable", "Enable"), ("disable", "Disable"), ("start", "Start"), ("stop", "Stop"), ("restart", "Restart"), ("check", "Check")],
-            )
-            if action:
-                _run_with_status_message("ttyd", lambda: ttyd_action(action))
-        elif choice == "4":
-            if _yesno("SSH Keys", "Regenerate SSH host keys?"):
-                _run_with_status_message("SSH Keys", generate_ssh_keys)
-        elif choice == "5":
             section = _menu(
                 "System Info",
                 [
@@ -1913,8 +2034,11 @@ def _utilities_menu() -> None:
                     ("storage", "Storage"),
                     ("network", "Networking"),
                     ("peripherals", "Peripherals"),
+                    ("back", "Back"),
                 ],
             )
+            if section in (None, "back"):
+                continue
             if section == "all":
                 _run_with_status_message("System Info", all_system_info)
             elif section == "cpu":
@@ -1927,12 +2051,45 @@ def _utilities_menu() -> None:
                 _run_with_status_message("Networking Info", networking_info)
             elif section == "peripherals":
                 _run_with_status_message("Peripherals Info", peripherals_info)
+        elif choice == "2":
+            state = _menu(
+                "Logging",
+                [
+                    ("enable", "Enable /var/log"),
+                    ("disable", "Disable /var/log"),
+                    ("check", "Check"),
+                    ("back", "Back"),
+                ],
+            )
+            if state and state != "back":
+                _run_with_status_message("Logging", lambda: logging_state(state))
+        elif choice == "3":
+            state = _menu(
+                "Activity LED",
+                [("enable", "Enable"), ("disable", "Disable"), ("check", "Check"), ("back", "Back")],
+            )
+            if state and state != "back":
+                _run_with_status_message("Activity LED", lambda: act_led(state))
+        elif choice == "4":
+            _meshtastic_i2c_menu()
+        elif choice == "5":
+            action = _menu(
+                "ttyd",
+                [("enable", "Enable"), ("disable", "Disable"), ("start", "Start"), ("stop", "Stop"), ("restart", "Restart"), ("check", "Check")],
+            )
+            if action:
+                _run_with_status_message("ttyd", lambda: ttyd_action(action))
         elif choice == "6":
+            if _yesno("SSH Keys", "Regenerate SSH host keys?"):
+                _run_with_status_message("SSH Keys", generate_ssh_keys)
+        elif choice == "7":
             command = legacy_tool_command(["htop", "top"])
             if command:
                 _run_interactive(command, "Process Viewer", "Process viewer not available.")
             else:
                 _message("Process Viewer", "Process viewer not available.")
+        elif choice == "8":
+            _time_menu()
 
 
 def _help_menu() -> None:
@@ -1989,7 +2146,7 @@ def _wifi_mesh_menu() -> None:
     service = _select_service(["femto-wifi-mesh", "femto-wifi-mesh-control"])
     while True:
         choice = _menu(
-            "Wi-Fi Mesh Sync",
+            "Admin mesh client Wi-Fi toggle",
             [
                 ("1", "Run sync now"),
                 ("2", "Service status"),
@@ -2004,7 +2161,7 @@ def _wifi_mesh_menu() -> None:
         if choice in (None, "8"):
             return
         if choice == "1":
-            _run_with_status_message("Wi-Fi Mesh Sync", wifi_mesh_sync, empty="Sync complete.")
+            _run_with_status_message("Admin mesh client Wi-Fi toggle", wifi_mesh_sync, empty="Sync complete.")
             continue
         action_map = {
             "2": "status",
@@ -2020,8 +2177,45 @@ def _wifi_mesh_menu() -> None:
 
 
 def _watchclock_menu() -> None:
-    if _yesno("Watchclock", "Run watchclock loop now?"):
-        _run_with_status_message("Watchclock", run_watchclock)
+    def _service_exists(name: str) -> bool:
+        for base in ("/etc/systemd/system", "/lib/systemd/system", "/usr/lib/systemd/system"):
+            if Path(base, f"{name}.service").exists():
+                return True
+        return False
+
+    def _select_service(candidates: list[str]) -> str:
+        for candidate in candidates:
+            if _service_exists(candidate):
+                return candidate
+        return candidates[0]
+
+    service = _select_service(["femto-watchclock", "watchclock"])
+    while True:
+        choice = _menu(
+            "Watchclock service",
+            [
+                ("1", "Status"),
+                ("2", "Start"),
+                ("3", "Stop"),
+                ("4", "Restart"),
+                ("5", "Enable"),
+                ("6", "Disable"),
+                ("7", "Back"),
+            ],
+        )
+        if choice in (None, "7"):
+            return
+        action_map = {
+            "1": "status",
+            "2": "start",
+            "3": "stop",
+            "4": "restart",
+            "5": "enable",
+            "6": "disable",
+        }
+        action = action_map.get(choice)
+        if action:
+            _run_cli_output(["services", service, action], f"{service} {action}")
 
 
 def _install_wizard() -> None:
@@ -2126,59 +2320,88 @@ def main(wizard: bool = False) -> int:
             return
         meshtastic_session.close(wait=False)
 
+    def _open_meshtastic_menu() -> None:
+        if not startup_done.is_set():
+            _run_with_status(
+                "mpwrd-config",
+                "Connecting to Meshtastic API...\nPlease wait.",
+                lambda: startup_done.wait(),
+            )
+        startup_connected, startup_error = _get_startup()
+        if not startup_connected:
+            if _recover_meshtastic_connection(
+                meshtastic_session,
+                startup_error or "Meshtastic is not connected.\nTry reconnecting now?",
+            ):
+                _set_startup(True, "")
+                startup_done.set()
+        _meshtastic_menu(meshtastic_session)
+
+    def _basic_menu() -> None:
+        while True:
+            choice = _menu(
+                "Basic",
+                [
+                    ("1", "Install Wizard"),
+                    ("2", "Back"),
+                ],
+            )
+            if choice in (None, "2"):
+                return
+            if choice == "1":
+                _install_wizard()
+
+    def _advanced_menu() -> None:
+        while True:
+            choice = _menu(
+                "Advanced",
+                [
+                    ("1", "Meshtastic"),
+                    ("2", "Networking"),
+                    ("3", "Software Manager"),
+                    ("4", "System Utilities"),
+                    ("5", "System Actions"),
+                    ("6", "Help / About"),
+                    ("7", "Back"),
+                ],
+            )
+            if choice in (None, "7"):
+                return
+            if choice == "1":
+                _open_meshtastic_menu()
+            elif choice == "2":
+                _networking_menu()
+            elif choice == "3":
+                _software_menu()
+            elif choice == "4":
+                _utilities_menu()
+            elif choice == "5":
+                _system_menu()
+            elif choice == "6":
+                _help_menu()
+
     atexit.register(close_handler)
 
     try:
         while True:
             choice = _menu(
-                "mpwrd-config",
+                MAIN_MENU_TITLE,
                 [
-                    ("1", "Meshtastic"),
-                    ("2", "Networking"),
-                    ("3", "Time & Timezone"),
-                    ("4", "Software Manager"),
-                    ("5", "System Utilities"),
-                    ("6", "System Actions"),
-                    ("7", "Install Wizard"),
-                    ("8", "Help / About"),
-                    ("9", "Exit"),
+                    ("1", "Basic"),
+                    ("2", "Advanced"),
+                    ("3", "Exit"),
                 ],
             )
-            if choice in (None, "9"):
+            if choice in (None, "3"):
                 _print_exiting_notice()
                 return 0
             if choice == "1":
-                if not startup_done.is_set():
-                    _run_with_status(
-                        "mpwrd-config",
-                        "Connecting to Meshtastic API...\nPlease wait.",
-                        lambda: startup_done.wait(),
-                    )
-                startup_connected, startup_error = _get_startup()
-                if not startup_connected:
-                    if _recover_meshtastic_connection(
-                        meshtastic_session,
-                        startup_error or "Meshtastic is not connected.\nTry reconnecting now?",
-                    ):
-                        _set_startup(True, "")
-                        startup_done.set()
-                    else:
-                        continue
-                _meshtastic_menu(meshtastic_session)
+                _basic_menu()
             elif choice == "2":
-                _networking_menu()
-            elif choice == "3":
-                _time_menu()
-            elif choice == "4":
-                _software_menu()
-            elif choice == "5":
-                _utilities_menu()
-            elif choice == "6":
-                _system_menu()
-            elif choice == "7":
-                _install_wizard()
-            elif choice == "8":
-                _help_menu()
+                _advanced_menu()
+    except _QuickExit:
+        _print_exiting_notice()
+        return 130
     finally:
         close_handler()
         try:
