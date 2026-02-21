@@ -26,6 +26,7 @@ from mpwrd_config.meshtastic import (
 )
 from mpwrd_config.software_manager import run_action as run_package_action
 from mpwrd_config.system import CommandResult, _run, ethernet_status, ip_addresses, set_wifi_credentials, wifi_status
+from mpwrd_config.time_config import set_timezone
 
 
 FEMTO_CONF_PATH = Path("/etc/femto.conf")
@@ -145,6 +146,14 @@ _LICENSE_MESHTASTIC = (
     "Some of the verbiage in the help-texts in the menus is sourced from the Meshtastic website, also licensed GPL3.\n"
     "\n"
     "For more information about Meshtastic, visit https://www.meshtastic.org"
+)
+
+_LICENSE_LUCKFOX = (
+    "Luckfox and Luckfox Pico Mini are property of Luckfox Technology. Femtofox does not represent Luckfox Technology in any way, shape or form. Visit their website at https://www.luckfox.com/."
+)
+
+_LICENSE_UBUNTU = (
+    "Ubuntu is a trademark of Canonical. Femtofox does not represent Ubuntu or Canonical in any way, shape or form. Find Ubuntu's license information on their site, https://ubuntu.com/legal. Licenses are also available in `/usr/share/common-licenses`."
 )
 
 
@@ -555,6 +564,7 @@ def run_usb_config_tool() -> CommandResult:
             "sx1262_tcxo": "sx1262_tcxo",
             "sx1262_xtal": "sx1262_xtal",
             "lr1121_tcxo": "lr1121_tcxo",
+            "sim": "sim",
             "none": "none",
         }
         model = mapping.get(raw)
@@ -567,6 +577,14 @@ def run_usb_config_tool() -> CommandResult:
         else:
             partial_failure = True
             log(f"Invalid LoRa radio name: {raw}")
+
+    if "timezone" in entries:
+        tz = entries["timezone"][0].replace("\\", "")
+        result = set_timezone(tz)
+        if result.returncode != 0:
+            partial_failure = True
+        log(result.stdout.strip() or f"Timezone set to {tz}.")
+        found_config = True
 
     if "meshtastic_url" in entries:
         url = entries["meshtastic_url"][0].replace("\\", "")
@@ -687,6 +705,10 @@ def license_info(kind: str) -> CommandResult:
         return CommandResult(returncode=1, stdout="Long license not found.")
     if kind == "meshtastic":
         return CommandResult(returncode=0, stdout=_LICENSE_MESHTASTIC)
+    if kind == "luckfox":
+        return CommandResult(returncode=0, stdout=_LICENSE_LUCKFOX)
+    if kind == "ubuntu":
+        return CommandResult(returncode=0, stdout=_LICENSE_UBUNTU)
     return CommandResult(returncode=1, stdout="Unknown license selection.")
 
 

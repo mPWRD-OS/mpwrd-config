@@ -16,6 +16,7 @@ dependencies = [
     "InquirerPy>=0.3.4",
     "meshtastic>=2.7.0,<3.0.0",
     "protobuf>=3.20.0",
+    "qrcode>=8.0",
 ]
 
 [project.scripts]

@@ -56,6 +56,148 @@ OPENSUSE_REPO_PATTERN = re.compile(r"download\.opensuse\.org/repositories/networ
 PPA_REPO_PATTERN = re.compile(r"ppa\.launchpadcontent\.net/meshtastic/([a-z]+)/ubuntu", re.I)
 
 
+def _needs_reset_failed(result: CommandResult) -> bool:
+    if result.returncode == 0:
+        return False
+    text = (result.stdout or "").lower()
+    markers = (
+        "start request repeated too quickly",
+        "start-limit-hit",
+        "start of the service was attempted too often",
+        "too often",
+        "systemctl reset-failed",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _service_action_with_recovery(action: str) -> CommandResult:
+    result = _run(["systemctl", action, "meshtasticd"])
+    if action not in {"start", "restart"} or not _needs_reset_failed(result):
+        return result
+
+    reset = _run(["systemctl", "reset-failed", "meshtasticd"])
+    retry = _run(["systemctl", action, "meshtasticd"])
+    parts: list[str] = []
+    if result.stdout.strip():
+        parts.append(result.stdout.strip())
+    if reset.stdout.strip():
+        parts.append(reset.stdout.strip())
+    if retry.stdout.strip():
+        parts.append(retry.stdout.strip())
+    if retry.returncode == 0:
+        parts.append("Cleared failed state and retried.")
+    return CommandResult(returncode=retry.returncode, stdout="\n".join(parts))
+
+
+def _configured_lora_module() -> str:
+    if not MESHTASTIC_MAIN_CONFIG_PATH.exists():
+        return ""
+    lines = MESHTASTIC_MAIN_CONFIG_PATH.read_text(encoding="utf-8").splitlines()
+    in_lora = False
+    lora_indent = 0
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if re.match(r"^Lora\s*:\s*$", stripped):
+            in_lora = True
+            lora_indent = indent
+            continue
+        if in_lora and indent <= lora_indent:
+            in_lora = False
+        if in_lora and stripped.startswith("Module:"):
+            return stripped.split(":", 1)[1].strip().lower()
+    return ""
+
+
+def _set_lora_module(module: str) -> CommandResult:
+    if not MESHTASTIC_MAIN_CONFIG_PATH.exists():
+        return CommandResult(returncode=1, stdout="Meshtastic config.yaml not found.")
+    text = MESHTASTIC_MAIN_CONFIG_PATH.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    in_lora = False
+    lora_indent = 0
+    lora_idx: int | None = None
+    module_idx: int | None = None
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if re.match(r"^Lora\s*:\s*$", stripped):
+            in_lora = True
+            lora_indent = indent
+            lora_idx = idx
+            continue
+        if in_lora and indent <= lora_indent:
+            in_lora = False
+        if in_lora and stripped.startswith("Module:"):
+            module_idx = idx
+            break
+
+    if module_idx is not None:
+        lines[module_idx] = f"{' ' * (lora_indent + 2)}Module: {module}"
+    elif lora_idx is not None:
+        lines.insert(lora_idx + 1, f"{' ' * (lora_indent + 2)}Module: {module}")
+    else:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append("Lora:")
+        lines.append(f"  Module: {module}")
+
+    updated = "\n".join(lines)
+    if text.endswith("\n"):
+        updated += "\n"
+    MESHTASTIC_MAIN_CONFIG_PATH.write_text(updated, encoding="utf-8")
+    return CommandResult(returncode=0, stdout=f"Lora.Module set to {module}.")
+
+
+def _render_qr_text_python(data: str) -> str | None:
+    try:
+        import qrcode
+    except Exception:
+        return None
+
+    try:
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=1,
+            border=1,
+        )
+        qr.add_data(data)
+        qr.make(fit=True)
+        matrix = qr.get_matrix()
+    except Exception:
+        return None
+
+    if not matrix:
+        return None
+
+    width = len(matrix[0])
+    if len(matrix) % 2 == 1:
+        matrix.append([False] * width)
+
+    lines: list[str] = []
+    for row in range(0, len(matrix), 2):
+        top = matrix[row]
+        bottom = matrix[row + 1]
+        chars: list[str] = []
+        for top_pixel, bottom_pixel in zip(top, bottom):
+            if top_pixel and bottom_pixel:
+                chars.append("█")
+            elif top_pixel and not bottom_pixel:
+                chars.append("▀")
+            elif not top_pixel and bottom_pixel:
+                chars.append("▄")
+            else:
+                chars.append(" ")
+        lines.append("".join(chars).rstrip())
+
+    return "\n".join(lines).rstrip()
+
+
 def _bluetooth_controller_detected() -> bool:
     path = Path("/sys/class/bluetooth")
     if not path.exists():
@@ -221,7 +363,7 @@ def set_mac_address_source(source: str) -> CommandResult:
     if text.endswith("\n"):
         new_text += "\n"
     MESHTASTIC_MAIN_CONFIG_PATH.write_text(new_text, encoding="utf-8")
-    restart = _run(["systemctl", "restart", "meshtasticd"])
+    restart = _service_action_with_recovery("restart")
     if restart.returncode != 0:
         return CommandResult(returncode=restart.returncode, stdout=restart.stdout.strip() or "Failed to restart meshtasticd.")
     return CommandResult(returncode=0, stdout=f"MAC address source set to {source_label}.")
@@ -1058,11 +1200,9 @@ def config_qr(session: MeshtasticSession | None = None) -> MeshtasticResult:
     url = url_result.stdout.strip()
     if not url:
         return MeshtasticResult(returncode=1, stdout="No configuration URL found.")
-    qrencode = shutil.which("qrencode")
-    if qrencode:
-        result = _run([qrencode, "-o", "-", "-t", "UTF8", "-s", "1", url])
-        if result.returncode == 0:
-            return MeshtasticResult(returncode=0, stdout=f"{result.stdout.rstrip()}\n{url}")
+    python_qr = _render_qr_text_python(url)
+    if python_qr:
+        return MeshtasticResult(returncode=0, stdout=f"{python_qr}\n{url}")
     return MeshtasticResult(returncode=0, stdout=url)
 
 
@@ -1509,6 +1649,8 @@ def set_legacy_admin_state(enabled: bool, session: MeshtasticSession | None = No
 
 
 def current_radio() -> MeshtasticResult:
+    if _configured_lora_module() == "sim":
+        return MeshtasticResult(returncode=0, stdout="sim")
     if not MESHTASTIC_CONFIG_DIR.exists():
         return MeshtasticResult(returncode=1, stdout="config directory missing")
     radios: list[str] = []
@@ -1528,10 +1670,21 @@ def current_radio() -> MeshtasticResult:
 def set_radio(model: str) -> CommandResult:
     for path in MESHTASTIC_CONFIG_DIR.glob("femtofox_*.yaml"):
         path.unlink()
+    if model == "sim":
+        result = _set_lora_module("sim")
+        if result.returncode != 0:
+            return result
+        return _service_action_with_recovery("restart")
     if model == "none":
-        return _run(["systemctl", "restart", "meshtasticd"])
+        result = _set_lora_module("auto")
+        if result.returncode != 0:
+            return result
+        return _service_action_with_recovery("restart")
     if model not in RADIO_CONFIG_MAP:
         return CommandResult(returncode=1, stdout="Invalid radio model.")
+    result = _set_lora_module("auto")
+    if result.returncode != 0:
+        return result
     if model == "lora-meshstick-1262":
         source = MESHTASTIC_AVAILABLE_DIR / RADIO_CONFIG_MAP[model]
     else:
@@ -1542,18 +1695,21 @@ def set_radio(model: str) -> CommandResult:
     destination = MESHTASTIC_CONFIG_DIR / destination_name
     if source.exists():
         destination.write_bytes(source.read_bytes())
-    return _run(["systemctl", "restart", "meshtasticd"])
+    return _service_action_with_recovery("restart")
 
 
 def service_action(action: str) -> CommandResult:
-    return _run(["systemctl", action, "meshtasticd"])
+    return _service_action_with_recovery(action)
 
 
 def service_enable(enable: bool) -> CommandResult:
     action = "enable" if enable else "disable"
     result = _run(["systemctl", action, "meshtasticd"])
     if enable:
-        _run(["systemctl", "restart", "meshtasticd"])
+        restart = _service_action_with_recovery("restart")
+        if restart.returncode != 0:
+            parts = [entry.strip() for entry in (result.stdout, restart.stdout) if entry.strip()]
+            return CommandResult(returncode=restart.returncode, stdout="\n".join(parts) or "Failed to restart meshtasticd.")
     else:
         _run(["systemctl", "stop", "meshtasticd"])
     return result
@@ -1587,11 +1743,11 @@ def i2c_state(state: str) -> CommandResult:
         if "I2C:" not in content:
             content = content.rstrip() + "\nI2C:\n  I2CDevice: /dev/i2c-3\n"
             MESHTASTIC_CONFIG_PATH.write_text(content, encoding="utf-8")
-        return _run(["systemctl", "restart", "meshtasticd"])
+        return _service_action_with_recovery("restart")
     if state == "disable":
         content = re.sub(r"I2C:.*?I2CDevice: /dev/i2c-3\\n", "", content, flags=re.DOTALL)
         MESHTASTIC_CONFIG_PATH.write_text(content, encoding="utf-8")
-        return _run(["systemctl", "restart", "meshtasticd"])
+        return _service_action_with_recovery("restart")
     if state == "check":
         if "I2C:" in content and "I2CDevice: /dev/i2c-3" in content:
             return CommandResult(returncode=0, stdout="enabled")
