@@ -265,15 +265,32 @@ def generate_ssh_keys() -> CommandResult:
             path.unlink()
         except FileNotFoundError:
             continue
-    _run(["ssh-keygen", "-t", "ed25519", "-f", "/etc/ssh/ssh_host_ed25519_key", "-N", ""])
-    _run(["ssh-keygen", "-t", "rsa", "-b", "4096", "-f", "/etc/ssh/ssh_host_rsa_key", "-N", ""])
+    errors: list[str] = []
+    returncode = 0
+
+    def _check(result: CommandResult, label: str) -> None:
+        nonlocal returncode
+        if result.returncode != 0:
+            returncode = max(returncode, result.returncode)
+            errors.append(result.stdout.strip() or label)
+
+    _check(
+        _run(["ssh-keygen", "-t", "ed25519", "-f", "/etc/ssh/ssh_host_ed25519_key", "-N", ""]),
+        "ssh-keygen ed25519 failed.",
+    )
+    _check(
+        _run(["ssh-keygen", "-t", "rsa", "-b", "4096", "-f", "/etc/ssh/ssh_host_rsa_key", "-N", ""]),
+        "ssh-keygen rsa failed.",
+    )
     for key_path in Path("/etc/ssh").glob("ssh_host_*_key"):
-        _run(["chmod", "600", str(key_path)])
+        _check(_run(["chmod", "600", str(key_path)]), f"chmod 600 {key_path} failed.")
     for pub_path in Path("/etc/ssh").glob("ssh_host_*_key.pub"):
-        _run(["chmod", "644", str(pub_path)])
+        _check(_run(["chmod", "644", str(pub_path)]), f"chmod 644 {pub_path} failed.")
     for host_path in Path("/etc/ssh").glob("ssh_host_*"):
-        _run(["chown", "root:root", str(host_path)])
-    _run(["systemctl", "restart", "ssh"])
+        _check(_run(["chown", "root:root", str(host_path)]), f"chown root:root {host_path} failed.")
+    _check(_run(["systemctl", "restart", "ssh"]), "Failed to restart ssh service.")
+    if returncode != 0:
+        return CommandResult(returncode=returncode, stdout="\n".join(errors).strip() or "SSH key regeneration failed.")
     return CommandResult(returncode=0, stdout="SSH keys regenerated.")
 
 
