@@ -20,3 +20,6 @@ debian/files
 .DS_Store
 old_codex_webui_conversation_and_log.txt
 resume.sh
+
+# Local-only agent instructions
+AGENTS.md

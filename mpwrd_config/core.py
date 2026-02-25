@@ -37,6 +37,10 @@ class NetworkingConfig:
     wifi: List[WifiNetwork] = field(default_factory=list)
     wifi_interface: str | None = None
     ethernet_interface: str | None = None
+    wifi_dhcp4: bool = True
+    wifi_address: str = ""
+    wifi_gateway: str = ""
+    wifi_nameservers: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -50,6 +54,14 @@ class NetworkingConfig:
             payload["wifi_interface"] = self.wifi_interface
         if self.ethernet_interface:
             payload["ethernet_interface"] = self.ethernet_interface
+        if not self.wifi_dhcp4 or self.wifi_address or self.wifi_gateway or self.wifi_nameservers:
+            payload["wifi_dhcp4"] = self.wifi_dhcp4
+            if self.wifi_address:
+                payload["wifi_address"] = self.wifi_address
+            if self.wifi_gateway:
+                payload["wifi_gateway"] = self.wifi_gateway
+            if self.wifi_nameservers:
+                payload["wifi_nameservers"] = self.wifi_nameservers
         return payload
 
     @classmethod
@@ -62,6 +74,10 @@ class NetworkingConfig:
             wifi=wifi_entries,
             wifi_interface=str(data.get("wifi_interface")) if data.get("wifi_interface") else None,
             ethernet_interface=str(data.get("ethernet_interface")) if data.get("ethernet_interface") else None,
+            wifi_dhcp4=bool(data.get("wifi_dhcp4", True)),
+            wifi_address=str(data.get("wifi_address", "")),
+            wifi_gateway=str(data.get("wifi_gateway", "")),
+            wifi_nameservers=list(data.get("wifi_nameservers", [])),
         )
 
 
