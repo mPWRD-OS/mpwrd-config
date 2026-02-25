@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import ipaddress
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -224,6 +226,7 @@ from mpwrd_config.system import (
     ip_addresses,
     list_ethernet_interfaces,
     list_wifi_interfaces,
+    scan_wifi_networks,
     set_hostname,
     set_wifi_credentials,
     test_internet,
@@ -600,12 +603,49 @@ def _menu(title: str, items: list[tuple[str, str]], default: str | None = None) 
 
 
 def _yesno(title: str, body: str) -> bool:
+    _clear_screen()
+    text_area = TextArea(
+        text=body or "",
+        read_only=True,
+        scrollbar=True,
+        wrap_lines=True,
+        focusable=False,
+    )
+    app: Application | None = None
+    result = {"value": False}
+
+    def _accept(event=None) -> None:
+        result["value"] = True
+        _safe_app_exit(app)
+
+    def _cancel(event=None) -> None:
+        result["value"] = False
+        _safe_app_exit(app)
+
+    yes_button = Button(text="Yes", handler=_accept)
+    no_button = Button(text="No", handler=_cancel)
+    dialog = Dialog(title=title, body=text_area, buttons=[yes_button, no_button], with_background=True)
+    kb = KeyBindings()
+    kb.add("tab")(focus_next)
+    kb.add("s-tab")(focus_previous)
+    kb.add("escape")(_cancel)
+    kb.add("q")(_cancel)
+    kb.add("left")(_cancel)
+    kb.add("right")(_accept)
+    kb.add("enter")(_accept)
+    app = Application(
+        layout=Layout(dialog, focused_element=yes_button),
+        key_bindings=merge_key_bindings([GLOBAL_KEY_BINDINGS, DEFAULT_KEY_BINDINGS, kb]),
+        mouse_support=False,
+        style=DIALOG_STYLE,
+        full_screen=True,
+    )
     try:
-        return bool(inquirer.confirm(message=f"{title}\n{body}", default=False, style=APP_STYLE).execute())
-    except KeyboardInterrupt:
+        app.run()
+    except (KeyboardInterrupt, EOFError):
         raise _QuickExit()
-    except EOFError:
-        return False
+    _clear_screen()
+    return result["value"]
 
 
 def _inputbox(title: str, body: str, default: str = "") -> str | None:
@@ -712,6 +752,16 @@ def _run_cli_output(args: list[str], title: str) -> int:
 
 
 def _read_wpa_defaults() -> tuple[str, str]:
+    config_path = _config_path()
+    ssid = ""
+    country = ""
+    if config_path.exists():
+        config = load_config(config_path)
+        if config.networking.wifi:
+            ssid = config.networking.wifi[0].ssid
+        country = config.networking.country_code or ""
+    if ssid or country:
+        return ssid, country
     path = Path("/etc/wpa_supplicant/wpa_supplicant.conf")
     if not path.exists():
         return "", ""
@@ -746,6 +796,106 @@ def _wifi_form() -> tuple[str | None, str | None, str | None]:
     except EOFError:
         return None, None, None
     return str(ssid).strip(), str(psk or "").strip(), str(country or "").strip()
+
+
+def _wifi_scan_form() -> tuple[str | None, str | None, str | None]:
+    path = _config_path()
+    config = load_config(path)
+
+    def _select_scan_interface() -> str | None:
+        interfaces = list_wifi_interfaces()
+        if not interfaces:
+            _message("Wi-Fi scan", "No Wi-Fi adapter detected.")
+            return None
+        items = []
+        for iface in interfaces:
+            label = iface
+            if config.networking.wifi_interface == iface:
+                label = f"{label} (selected)"
+            items.append((iface, label))
+        choice = _menu("Select Wi-Fi interface", items, default=config.networking.wifi_interface or interfaces[0])
+        if choice is None:
+            return None
+        config.networking.wifi_interface = choice
+        save_config(config, path)
+        return choice
+
+    iface = config.networking.wifi_interface
+    warning: str | None = None
+    while True:
+        networks, error = scan_wifi_networks(iface)
+        if not error:
+            break
+        if "Multiple Wi-Fi interfaces detected" in error or "Select one." in error or "not found" in error:
+            iface = _select_scan_interface()
+            if not iface:
+                return None, None, None
+            continue
+        if "No Wi-Fi interface detected" in error:
+            _message("Wi-Fi scan", "No Wi-Fi adapter detected.")
+            return None, None, None
+        if "is down" in error:
+            if _yesno("Wi-Fi scan", "Wi-Fi is disabled. Enable Wi-Fi and scan?"):
+                config.networking.wifi_enabled = True
+                save_config(config, path)
+                result = wifi_state("up", interface=iface)
+                if result.returncode != 0:
+                    _message("Wi-Fi scan", result.stdout.strip() or "Failed to enable Wi-Fi.")
+                    return None, None, None
+                continue
+            return None, None, None
+        if "radio is disabled" in error:
+            if _yesno("Wi-Fi scan", "Wi-Fi is disabled. Enable Wi-Fi and scan?"):
+                config.networking.wifi_enabled = True
+                save_config(config, path)
+                result = wifi_state("up", interface=iface)
+                if result.returncode != 0:
+                    _message("Wi-Fi scan", result.stdout.strip() or "Failed to enable Wi-Fi.")
+                    return None, None, None
+                continue
+            return None, None, None
+        warning = error
+        networks = []
+        break
+
+    if not networks and warning is None:
+        warning = "No networks found."
+    if warning:
+        _message("Wi-Fi scan", f"{warning}\n\nYou can enter an SSID manually.")
+    items: list[tuple[str, str]] = []
+    for network in networks:
+        label = f"{network.ssid} ({network.signal_label()}, {network.security})"
+        items.append((network.ssid, label))
+    items.append(("manual", "Manual entry"))
+    choice = _menu("Select Wi-Fi SSID", items)
+    if choice is None:
+        return None, None, None
+    if choice == "manual":
+        return _wifi_form()
+    selected = next((net for net in networks if net.ssid == choice), None)
+    psk = ""
+    if not selected or selected.security != "open":
+        try:
+            psk = inquirer.secret(message="Wi-Fi Password", style=APP_STYLE).execute()
+        except KeyboardInterrupt:
+            raise _QuickExit()
+        except EOFError:
+            return None, None, None
+        if not psk:
+            _message("Wi-Fi", "Password required for secure networks.")
+            return None, None, None
+    try:
+        _, country_default = _read_wpa_defaults()
+        country = inquirer.text(
+            message="Country Code (optional)",
+            default=country_default,
+            style=APP_STYLE,
+        ).execute()
+    except KeyboardInterrupt:
+        raise _QuickExit()
+    except EOFError:
+        return None, None, None
+    return str(choice).strip(), str(psk or "").strip(), str(country or "").strip()
 
 
 def _networking_menu() -> None:
@@ -784,6 +934,11 @@ def _networking_menu() -> None:
             config.networking.country_code,
             apply=config.networking.wifi_enabled,
             interface=config.networking.wifi_interface,
+            networks=[(net.ssid, net.psk) for net in config.networking.wifi],
+            dhcp4=config.networking.wifi_dhcp4,
+            address=config.networking.wifi_address,
+            gateway=config.networking.wifi_gateway,
+            nameservers=config.networking.wifi_nameservers,
         )
 
     def _set_wifi_enabled(enabled: bool) -> CommandResult:
@@ -797,6 +952,122 @@ def _networking_menu() -> None:
         if result.stdout.strip():
             output.append(result.stdout.strip())
         return CommandResult(returncode=result.returncode, stdout="\n".join(output))
+
+    def _configure_wifi_ip() -> CommandResult:
+        path = _config_path()
+        config = load_config(path)
+        default_mode = "static" if not config.networking.wifi_dhcp4 else "dhcp"
+        mode = _menu(
+            "Wi-Fi IP settings",
+            [
+                ("dhcp", "DHCP (automatic)"),
+                ("static", "Static IP"),
+            ],
+            default=default_mode,
+        )
+        if mode is None:
+            return CommandResult(returncode=0, stdout="Cancelled.")
+
+        def _is_valid_ip(value: str) -> bool:
+            try:
+                ipaddress.ip_address(value)
+                return True
+            except ValueError:
+                return False
+
+        def _prompt_optional_ip(title: str, prompt: str, default: str) -> str | None:
+            while True:
+                value = _inputbox(title, prompt, default)
+                if value is None:
+                    return None
+                value = value.strip()
+                if not value:
+                    return ""
+                if _is_valid_ip(value):
+                    return value
+                _message(title, "Enter a valid IP address or leave blank.")
+
+        def _prompt_dns(default: str) -> list[str] | None:
+            while True:
+                value = _inputbox("Wi-Fi DNS", "DNS servers (comma-separated, optional):", default)
+                if value is None:
+                    return None
+                value = value.strip()
+                if not value:
+                    return []
+                servers = [part for part in re.split(r"[ ,]+", value) if part]
+                if servers and all(_is_valid_ip(entry) for entry in servers):
+                    return servers
+                _message("Wi-Fi DNS", "Enter valid DNS server IPs separated by commas.")
+
+        if mode == "dhcp":
+            config.networking.wifi_dhcp4 = True
+            config.networking.wifi_address = ""
+            config.networking.wifi_gateway = ""
+            config.networking.wifi_nameservers = []
+            save_config(config, path)
+            if config.networking.wifi:
+                primary = config.networking.wifi[0]
+                return set_wifi_credentials(
+                    primary.ssid,
+                    primary.psk,
+                    config.networking.country_code,
+                    apply=config.networking.wifi_enabled,
+                    interface=config.networking.wifi_interface,
+                    networks=[(net.ssid, net.psk) for net in config.networking.wifi],
+                    dhcp4=True,
+                    address="",
+                    gateway="",
+                    nameservers=[],
+                )
+            return CommandResult(returncode=0, stdout="Wi-Fi IP set to DHCP.")
+
+        address_default = config.networking.wifi_address or "192.168.0.10/24"
+        def _is_valid_cidr(value: str) -> bool:
+            try:
+                ipaddress.ip_interface(value)
+                return True
+            except ValueError:
+                return False
+
+        address = _input_with_validation(
+            "Wi-Fi IP",
+            "Static address (CIDR, e.g. 192.168.0.10/24):",
+            address_default,
+            _is_valid_cidr,
+            "Enter a valid CIDR address (e.g. 192.168.0.10/24).",
+        )
+        if address is None:
+            return CommandResult(returncode=0, stdout="Cancelled.")
+        gateway_default = config.networking.wifi_gateway or ""
+        gateway = _prompt_optional_ip("Wi-Fi Gateway", "Gateway (optional):", gateway_default)
+        if gateway is None:
+            return CommandResult(returncode=0, stdout="Cancelled.")
+        dns_default = ", ".join(config.networking.wifi_nameservers)
+        nameservers = _prompt_dns(dns_default)
+        if nameservers is None:
+            return CommandResult(returncode=0, stdout="Cancelled.")
+
+        config.networking.wifi_dhcp4 = False
+        config.networking.wifi_address = address
+        config.networking.wifi_gateway = gateway
+        config.networking.wifi_nameservers = nameservers
+        save_config(config, path)
+        if config.networking.wifi:
+            primary = config.networking.wifi[0]
+            return set_wifi_credentials(
+                primary.ssid,
+                primary.psk,
+                config.networking.country_code,
+                apply=config.networking.wifi_enabled,
+                interface=config.networking.wifi_interface,
+                networks=[(net.ssid, net.psk) for net in config.networking.wifi],
+                dhcp4=False,
+                address=address,
+                gateway=gateway,
+                nameservers=nameservers,
+            )
+        return CommandResult(returncode=0, stdout="Wi-Fi IP settings saved.")
 
     def _show_selected_wifi_status() -> CommandResult:
         config = load_config(_config_path())
@@ -820,7 +1091,7 @@ def _networking_menu() -> None:
         if not interfaces:
             _message("Interfaces", f"No {kind} interfaces detected.")
             return
-        items = [("auto", "Auto (if only one)")]
+        items = [("auto", "Auto (no forced selection)")]
         for iface in interfaces:
             label = iface
             if current == iface:
@@ -903,8 +1174,11 @@ def _networking_menu() -> None:
                     save_config(config, path)
                     result = _run_with_status("Hostname", "Working...", lambda: set_hostname(hostname))
                     details = result.stdout.strip()
-                    location = f"mpwrd-config is now reachable at\n{hostname}.local"
-                    _message("Hostname", f"{details}\n\n{location}" if details else location)
+                    if result.returncode != 0:
+                        _message("Hostname", details or "Failed to set hostname.")
+                    else:
+                        location = f"mpwrd-config is now reachable at\n{hostname}.local"
+                        _message("Hostname", f"{details}\n\n{location}" if details else location)
 
     def _interfaces_menu() -> None:
         while True:
@@ -928,27 +1202,33 @@ def _networking_menu() -> None:
             action = _menu(
                 "Wi-Fi Settings",
                 [
-                    ("1", "Show Wi-Fi status"),
-                    ("2", "Change Wi-Fi settings"),
-                    ("3", "Enable Wi-Fi"),
-                    ("4", "Disable Wi-Fi"),
-                    ("5", "Restart Wi-Fi"),
-                    ("6", "Back"),
+                    ("1", "Wi-Fi status"),
+                    ("2", "Connect to Wi-Fi"),
+                    ("3", "Configure Wi-Fi IP"),
+                    ("4", "Enable Wi-Fi"),
+                    ("5", "Disable Wi-Fi"),
+                    ("6", "Select Wi-Fi interface"),
+                    ("7", "Restart Wi-Fi"),
+                    ("8", "Back"),
                 ],
             )
-            if action in (None, "6"):
+            if action in (None, "8"):
                 return
             if action == "1":
                 _run_with_status_message("Wi-Fi settings", _show_selected_wifi_status)
             elif action == "2":
-                ssid, psk, country = _wifi_form()
+                ssid, psk, country = _wifi_scan_form()
                 if ssid:
-                    _run_with_status_message("Wi-Fi", lambda: _update_wifi_config(ssid, psk, country))
+                    _run_with_status_message("Wi-Fi", lambda: _update_wifi_config(ssid, psk or "", country))
             elif action == "3":
-                _run_with_status_message("Wi-Fi", lambda: _set_wifi_enabled(True))
+                _run_with_status_message("Wi-Fi IP settings", _configure_wifi_ip)
             elif action == "4":
-                _run_with_status_message("Wi-Fi", lambda: _set_wifi_enabled(False))
+                _run_with_status_message("Wi-Fi", lambda: _set_wifi_enabled(True))
             elif action == "5":
+                _run_with_status_message("Wi-Fi", lambda: _set_wifi_enabled(False))
+            elif action == "6":
+                _select_interface("wifi", list_wifi_interfaces())
+            elif action == "7":
                 if not _has_wifi_interface():
                     _message("Restart Wi-Fi", "No Wi-Fi adapter detected.\n\nIs a Wi-Fi adapter connected?")
                 elif _yesno("Restart Wi-Fi", "Wi-Fi will be restarted.\n\nProceed?"):
@@ -959,7 +1239,7 @@ def _networking_menu() -> None:
             action = _menu(
                 "Networking Diagnostics",
                 [
-                    ("1", "Show Wi-Fi status"),
+                    ("1", "Wi-Fi status"),
                     ("2", "Show ethernet status"),
                     ("3", "Show IP addresses"),
                     ("4", "Test internet connection"),
@@ -1286,15 +1566,29 @@ def _meshtastic_menu(session: MeshtasticSession) -> None:
                 _wifi_mesh_menu()
 
     def _mac_source_menu() -> None:
-        current = _run_with_status(
-            "MAC Address Source",
-            "Working...",
-            lambda: mac_address_source().stdout.strip(),
-        )
+        result = _run_with_status("MAC Address Source", "Working...", mac_address_source)
+        current = result.stdout.strip() if hasattr(result, "stdout") else ""
+        if getattr(result, "returncode", 1) != 0:
+            current = ""
         options = mac_address_source_options()
         option_keys = {value for value, _ in options}
         if current and current not in option_keys:
-            options.insert(0, (current, f"Current ({current})"))
+            if re.fullmatch(r"(?i)([0-9a-f]{2}:){5}[0-9a-f]{2}", current):
+                _message(
+                    "MAC Address Source",
+                    "An explicit MAC address is configured:\n"
+                    f"{current}\n\n"
+                    "Select a source below to override it, or Back to keep it.",
+                )
+                current = ""
+            else:
+                _message("MAC Address Source", current)
+                current = ""
+        if current and current in option_keys:
+            for idx, (value, label) in enumerate(options):
+                if value == current:
+                    options[idx] = (value, f"Current: {label}")
+                    break
         options.append(("back", "Back"))
         choice = _menu("MAC Address Source", options, default=current if current in option_keys else None)
         if not choice or choice == "back":
@@ -1955,12 +2249,23 @@ def _time_menu() -> None:
         if choice == "1":
             _run_with_status_message("Time status", time_status)
         elif choice == "2":
+            if not shutil.which("timedatectl"):
+                _message(
+                    "Timezone",
+                    "timedatectl is not available on this system.\n\n"
+                    "Timezone selection requires systemd's timedatectl.",
+                )
+                continue
             tz = _run_with_status("Timezone", "Working...", lambda: current_timezone().stdout.strip())
-            timezones = _run_with_status(
-                "Timezone",
-                "Working...",
-                lambda: subprocess.check_output(["timedatectl", "list-timezones"], text=True).splitlines(),
-            )
+            try:
+                timezones = _run_with_status(
+                    "Timezone",
+                    "Working...",
+                    lambda: subprocess.check_output(["timedatectl", "list-timezones"], text=True).splitlines(),
+                )
+            except Exception as exc:
+                _message("Timezone", f"Unable to list timezones.\n\n{exc}")
+                continue
             items = [(zone, "") for zone in timezones]
             selected = _menu("Set Time Zone", items, default=tz)
             if selected:
@@ -2314,6 +2619,9 @@ def _watchclock_menu() -> None:
 
 
 def _install_wizard() -> None:
+    def _run_cli_step(title: str, args: list[str]) -> int:
+        return _run_cli_output(args, title)
+
     if not _yesno(
         "Install Wizard",
         "The install wizard will allow you to configure all the settings necessary to run your Femtofox.\n\n"
@@ -2323,18 +2631,18 @@ def _install_wizard() -> None:
     _time_menu()
     hostname = _inputbox("Hostname", "Enter hostname:", os.uname().nodename)
     if hostname:
-        _run_cli(["networking", "hostname", "set", "--name", hostname])
-        _run_cli(["networking", "apply"])
-        _message("Hostname", f"Femtofox is now reachable at\n{hostname}.local")
+        if _run_cli_step("Hostname", ["networking", "hostname", "set", "--name", hostname]) == 0:
+            if _run_cli_step("Networking", ["networking", "apply"]) == 0:
+                _message("Hostname", f"Femtofox is now reachable at\n{hostname}.local")
     if _yesno("Install Wizard", "Configure Wi-Fi settings?"):
         ssid, psk, country = _wifi_form()
         if ssid:
             args = ["networking", "wifi", "set", "--ssid", ssid, "--psk", psk]
             if country:
                 args.extend(["--country", country])
-            _run_cli(args)
-            _run_cli(["networking", "apply"])
-            _message("Wi-Fi", "Wi-Fi settings saved.")
+            if _run_cli_step("Wi-Fi", args) == 0:
+                if _run_cli_step("Networking", ["networking", "apply"]) == 0:
+                    _message("Wi-Fi", "Wi-Fi settings saved.")
     if _yesno("Install Wizard", "Configure Meshtastic?"):
         while True:
             choice = _menu(
@@ -2353,19 +2661,19 @@ def _install_wizard() -> None:
             if choice == "1":
                 model = _inputbox("LoRa radio", "Enter radio model (or 'none'):", "none")
                 if model:
-                    _run_cli(["meshtastic", "set-radio", "--model", model])
+                    _run_cli_step("Meshtastic radio", ["meshtastic", "set-radio", "--model", model])
             elif choice == "2":
                 url = _inputbox("Config URL", "Enter config URL:")
                 if url:
-                    _run_cli(["meshtastic", "set-config-url", "--url", url])
+                    _run_cli_step("Meshtastic URL", ["meshtastic", "set-config-url", "--url", url])
             elif choice == "3":
                 key = _inputbox("Private Key", "Enter private key:")
                 if key:
-                    _run_cli(["meshtastic", "set-private-key", "--key", key])
+                    _run_cli_step("Meshtastic private key", ["meshtastic", "set-private-key", "--key", key])
             elif choice == "4":
                 key = _inputbox("Public Key", "Enter public key:")
                 if key:
-                    _run_cli(["meshtastic", "set-public-key", "--key", key])
+                    _run_cli_step("Meshtastic public key", ["meshtastic", "set-public-key", "--key", key])
             elif choice == "5":
                 _meshtastic_full_settings_menu()
     _message("Install Wizard", "Setup wizard complete!")
