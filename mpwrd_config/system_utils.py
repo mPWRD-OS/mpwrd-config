@@ -577,7 +577,7 @@ def run_usb_config_tool() -> CommandResult:
             "seeed-wio-sx1262": "sx1262_tcxo",
             "waveshare-sx126x-xxxm": "sx1262_xtal",
             "ai-thinker-ra-01sh": "sx1262_xtal",
-            "ebyte-e80-900m22s": "lr1121_tcxo",
+            "ebyte-e80-900m2213s": "lr1121_tcxo",
             "sx1262_tcxo": "sx1262_tcxo",
             "sx1262_xtal": "sx1262_xtal",
             "lr1121_tcxo": "lr1121_tcxo",
