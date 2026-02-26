@@ -1823,9 +1823,9 @@ def _meshtastic_lora_menu(session: MeshtasticSession | None = None) -> None:
             lambda: current_radio().stdout.strip(),
         )
         options = [
-            ("lr1121_tcxo", "LR1121 TCXO"),
+            ("lr1121_tcxo", "LR1121 TCXO (Ebyte e80-900m2213s)"),
             ("sx1262_tcxo", "SX1262 TCXO (Ebyte e22-900m30s / Heltec ht-ra62 / Seeed wio-sx1262)"),
-            ("sx1262_xtal", "SX1262 XTAL (Ebyte e80-900m22s / Waveshare / AI Thinker ra-01sh)"),
+            ("sx1262_xtal", "SX1262 XTAL (Ebyte e22-900mm22s / Waveshare / AI Thinker ra-01sh)"),
             ("lora-meshstick-1262", "LoRa Meshstick 1262 (USB)"),
             ("sim", "Simulated radio (software)"),
             ("none", "Auto-detect (no forced profile)"),
